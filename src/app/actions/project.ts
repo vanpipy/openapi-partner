@@ -268,7 +268,59 @@ export async function triggerProjectSync(
     return { success: false, error: result.error };
   }
 
+  const taskId = result.task.id;
+
+  // Start processing the task asynchronously
+  processTask(taskId, projectId).catch(console.error);
+
   revalidatePath('/projects');
 
-  return { success: true, taskId: result.task.id };
+  return { success: true, taskId };
+}
+
+/**
+ * Process a task asynchronously
+ */
+async function processTask(taskId: string, projectId: number) {
+  try {
+    // Start the task
+    const { startTask, completeTask, failTask, appendTaskLog } = await import('@/lib/tasks');
+    const startResult = await startTask(taskId);
+
+    if (!startResult.success) {
+      return;
+    }
+
+    // Log start
+    await appendTaskLog(taskId, 'Starting type generation...');
+
+    // Import generator and run
+    const { generateTypes } = await import('@/lib/generator');
+
+    await generateTypes({
+      projectId,
+      taskId,
+      onProgress: async (message) => {
+        try {
+          await appendTaskLog(taskId, message);
+        } catch (e) {
+          console.error('Failed to log progress:', e);
+        }
+      },
+      onComplete: async (outputPath) => {
+        console.log(`Task ${taskId} completed: ${outputPath}`);
+      },
+      onError: async (error) => {
+        console.error(`Task ${taskId} failed:`, error);
+      },
+    });
+  } catch (error) {
+    console.error(`Task ${taskId} processing failed:`, error);
+    try {
+      const { failTask } = await import('@/lib/tasks');
+      await failTask(taskId, error instanceof Error ? error.message : 'Unknown error');
+    } catch (e) {
+      console.error('Failed to mark task as failed:', e);
+    }
+  }
 }
