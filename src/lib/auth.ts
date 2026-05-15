@@ -1,217 +1,229 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
-import { eq } from 'drizzle-orm';
-import { initDatabase, users, sessions, UserRole, type User, type Session } from './db';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { eq, and, gt } from 'drizzle-orm';
+import { getDb, tokens, projects, type Token, type Project } from './db';
 
 /**
- * Session-based authentication library
- * Simple and secure for single-application use
+ * Token-based authentication library
+ * For external system access and API authentication
  */
 
-// Session cookie configuration
-const SESSION_COOKIE_NAME = 'session_id';
-const SESSION_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-};
+// ============================================
+// Token Generation (Web Crypto API)
+// ============================================
 
 /**
- * Hash a password using scrypt
+ * Generate a secure random token using Web Crypto API
+ * Returns a 32-character URL-safe Base64 string
  */
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
+export async function generateToken(): Promise<string> {
+  const buffer = new Uint8Array(24); // 24 bytes = 32 base64 characters
+  crypto.getRandomValues(buffer);
+  return Buffer.from(buffer).toString('base64url');
 }
 
 /**
- * Verify a password against a hash
+ * Generate a token preview (for display before saving)
+ * Shows first 8 characters of the token
  */
-export function verifyPassword(password: string, storedHash: string): boolean {
-  const [salt, hash] = storedHash.split(':');
-  const verifyHash = scryptSync(password, salt, 64).toString('hex');
-  
+export function previewToken(token: string): string {
+  if (token.length <= 8) return token;
+  return `${token.slice(0, 8)}...`;
+}
+
+// ============================================
+// Token Hashing (SHA-256)
+// ============================================
+
+/**
+ * Hash a token using SHA-256
+ * Tokens are stored as hashes for security
+ */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Verify a token against its hash
+ */
+export function verifyToken(token: string, tokenHash: string): boolean {
+  const hash = hashToken(token);
   try {
     const hashBuffer = Buffer.from(hash, 'hex');
-    const verifyBuffer = Buffer.from(verifyHash, 'hex');
-    return timingSafeEqual(hashBuffer, verifyBuffer);
+    const storedBuffer = Buffer.from(tokenHash, 'hex');
+    return timingSafeEqual(hashBuffer, storedBuffer);
   } catch {
     return false;
   }
 }
 
-/**
- * Generate a secure session ID
- */
-export function generateSessionId(): string {
-  return randomBytes(32).toString('hex');
+// ============================================
+// Token Management
+// ============================================
+
+export interface CreateTokenOptions {
+  projectId: number;
+  name: string;
+  permissions?: string[];
+  expiresInDays?: number;
 }
 
 /**
- * Create a new session for a user
+ * Create a new token for a project
  */
-export async function createSession(userId: number, maxAge: number = 86400): Promise<string> {
-  const { db } = initDatabase();
-  const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + maxAge * 1000);
+export async function createToken(options: CreateTokenOptions): Promise<{
+  success: true;
+  token: string;
+  tokenRecord: Token;
+} | {
+  success: false;
+  error: string;
+}> {
+  const db = getDb();
 
-  await db.insert(sessions).values({
-    id: sessionId,
-    userId,
-    expiresAt,
-  });
-
-  return sessionId;
-}
-
-/**
- * Get session by session ID
- */
-export async function getSession(sessionId: string): Promise<{ session: Session; user: User } | null> {
-  const { db } = initDatabase();
-
-  const result = await db
+  // Verify project exists
+  const project = await db
     .select()
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(eq(sessions.id, sessionId))
+    .from(projects)
+    .where(eq(projects.id, options.projectId))
     .get();
 
-  if (!result) return null;
+  if (!project) {
+    return { success: false, error: 'Project not found' };
+  }
 
-  // Check if session is expired
-  if (new Date(result.sessions.expiresAt) < new Date()) {
-    // Delete expired session
-    await db.delete(sessions).where(eq(sessions.id, sessionId));
+  // Generate token and hash
+  const plainToken = await generateToken();
+  const tokenHash = hashToken(plainToken);
+
+  // Calculate expiration
+  const expiresAt = options.expiresInDays
+    ? new Date(Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000)
+    : null;
+
+  // Default permissions
+  const permissions = options.permissions ?? ['read'];
+
+  // Insert token record
+  const [tokenRecord] = await db
+    .insert(tokens)
+    .values({
+      tokenHash,
+      projectId: options.projectId,
+      name: options.name,
+      permissions: JSON.stringify(permissions),
+      expiresAt,
+    })
+    .returning();
+
+  return {
+    success: true,
+    token: plainToken, // Return plain token ONLY ONCE
+    tokenRecord,
+  };
+}
+
+/**
+ * Validate a bearer token
+ */
+export async function validateToken(token: string): Promise<{
+  success: true;
+  token: Token;
+  project: Project;
+} | {
+  success: false;
+  error: string;
+}> {
+  const db = getDb();
+  const tokenHash = hashToken(token);
+
+  // Find token by hash
+  const result = await db
+    .select()
+    .from(tokens)
+    .innerJoin(projects, eq(tokens.projectId, projects.id))
+    .where(eq(tokens.tokenHash, tokenHash))
+    .get();
+
+  if (!result) {
+    return { success: false, error: 'Invalid token' };
+  }
+
+  // Check expiration
+  if (result.tokens.expiresAt && new Date(result.tokens.expiresAt) < new Date()) {
+    return { success: false, error: 'Token expired' };
+  }
+
+  // Update last used timestamp
+  await db
+    .update(tokens)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(tokens.id, result.tokens.id));
+
+  return {
+    success: true,
+    token: result.tokens,
+    project: result.projects,
+  };
+}
+
+/**
+ * Parse Bearer token from Authorization header
+ */
+export function parseBearerToken(authHeader: string | null): string | null {
+  if (!authHeader) return null;
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
     return null;
   }
 
-  return {
-    session: result.sessions,
-    user: result.users,
-  };
+  return parts[1];
 }
 
 /**
- * Delete a session
+ * Check if token has specific permission
  */
-export async function deleteSession(sessionId: string): Promise<void> {
-  const { db } = initDatabase();
-  await db.delete(sessions).where(eq(sessions.id, sessionId));
+export function hasPermission(permissions: string[], action: string): boolean {
+  // 'admin' permission grants all access
+  if (permissions.includes('admin')) return true;
+  return permissions.includes(action);
 }
 
 /**
- * Delete all sessions for a user
+ * Revoke a token
  */
-export async function deleteUserSessions(userId: number): Promise<void> {
-  const { db } = initDatabase();
-  await db.delete(sessions).where(eq(sessions.userId, userId));
-}
-
-/**
- * Authenticate user with username and password
- */
-export async function authenticateUser(
-  username: string,
-  password: string
-): Promise<{ success: true; user: User } | { success: false; error: string }> {
-  const { db } = initDatabase();
-
-  const user = await db
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .get();
-
-  if (!user) {
-    return { success: false, error: 'Invalid username or password' };
-  }
-
-  if (!verifyPassword(password, user.passwordHash)) {
-    return { success: false, error: 'Invalid username or password' };
-  }
-
-  return { success: true, user };
-}
-
-/**
- * Create a new user
- */
-export async function createUser(
-  username: string,
-  password: string,
-  role: UserRole = UserRole.VIEWER
-): Promise<{ success: true; user: User } | { success: false; error: string }> {
-  const { db } = initDatabase();
-
-  // Check if username exists
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .get();
-
-  if (existing) {
-    return { success: false, error: 'Username already exists' };
-  }
-
-  const passwordHash = hashPassword(password);
-  const now = new Date();
+export async function revokeToken(tokenId: number): Promise<boolean> {
+  const db = getDb();
 
   const result = await db
-    .insert(users)
-    .values({
-      username,
-      passwordHash,
-      role,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get();
+    .delete(tokens)
+    .where(eq(tokens.id, tokenId))
+    .run();
 
-  return { success: true, user: result };
+  return result.changes > 0;
 }
 
 /**
- * Get session cookie options for response headers
+ * List all tokens for a project
  */
-export function getSessionCookieOptions(maxAge: number = 86400) {
-  return {
-    ...SESSION_COOKIE_OPTIONS,
-    maxAge,
-  };
+export async function listTokens(projectId: number): Promise<Token[]> {
+  const db = getDb();
+
+  return db
+    .select()
+    .from(tokens)
+    .where(eq(tokens.projectId, projectId))
+    .all();
 }
 
-/**
- * Parse session cookie from request headers
- */
-export function parseSessionCookie(cookieHeader: string | null): string | null {
-  if (!cookieHeader) return null;
-  
-  const cookies = cookieHeader.split(';').map((c) => c.trim());
-  for (const cookie of cookies) {
-    const [name, value] = cookie.split('=');
-    if (name === SESSION_COOKIE_NAME) {
-      return value;
-    }
-  }
-  return null;
-}
+// ============================================
+// Permission Types
+// ============================================
 
-/**
- * Role-based permission check
- */
-export function hasPermission(role: UserRole, action: string): boolean {
-  const permissions: Record<UserRole, string[]> = {
-    [UserRole.VIEWER]: ['read'],
-    [UserRole.EDITOR]: ['read', 'create', 'update'],
-    [UserRole.ADMIN]: ['read', 'create', 'update', 'delete', 'manage_users'],
-  };
+export const Permission = {
+  READ: 'read',
+  WRITE: 'write',
+  ADMIN: 'admin',
+} as const;
 
-  return permissions[role]?.includes(action) ?? false;
-}
-
-// Export constants
-export { SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS };
+export type Permission = (typeof Permission)[keyof typeof Permission];
