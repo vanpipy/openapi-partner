@@ -18,8 +18,27 @@ export async function GET(
 ) {
   const { id: taskId } = await params;
 
-  // Verify task exists
-  const task = await getTask(taskId);
+  // Verify task exists with retry logic for database locks
+  let task = null;
+  let attempts = 0;
+  const maxAttempts = 3;
+  
+  while (attempts < maxAttempts) {
+    try {
+      task = await getTask(taskId);
+      break;
+    } catch (error: unknown) {
+      const err = error as { code?: string };
+      attempts++;
+      if (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED') {
+        // Wait and retry
+        await new Promise(resolve => setTimeout(resolve, 100 * attempts));
+        continue;
+      }
+      throw error;
+    }
+  }
+
   if (!task) {
     return new Response('Task not found', { status: 404 });
   }
@@ -34,7 +53,7 @@ export async function GET(
       const initialEvent = JSON.stringify({
         type: 'init',
         taskId,
-        status: task.status,
+        status: task?.status,
         timestamp: new Date().toISOString(),
       });
       controller.enqueue(encoder.encode(`data: ${initialEvent}\n\n`));

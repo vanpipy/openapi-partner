@@ -12,7 +12,7 @@ let db: ReturnType<typeof drizzle> | null = null;
 let client: ReturnType<typeof createClient> | null = null;
 
 /**
- * Initialize database client
+ * Initialize database client with WAL mode for better concurrency
  */
 export function initDatabase() {
   if (client) return { db, client };
@@ -28,6 +28,16 @@ export function initDatabase() {
 
   db = drizzle(client, { schema });
 
+  // Enable WAL mode for better concurrency (non-blocking reads during writes)
+  // WAL mode allows concurrent reads while writing
+  try {
+    client.executeSync('PRAGMA journal_mode=WAL');
+    client.executeSync('PRAGMA busy_timeout=5000'); // 5 second timeout
+    client.executeSync('PRAGMA synchronous=NORMAL');
+  } catch (e) {
+    console.warn('Could not set SQLite PRAGMA settings:', e);
+  }
+  
   console.log(`✅ Database initialized: ${databaseUrl}`);
   
   return { db, client };
