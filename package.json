@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "bun test",
+    "test": "bun test __tests__ src/lib",
     "test:ci": "bun test",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
