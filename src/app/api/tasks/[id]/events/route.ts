@@ -9,6 +9,9 @@ import { getTask } from '@/lib/tasks';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// Text encoder for SSE
+const encoder = new TextEncoder();
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -34,7 +37,7 @@ export async function GET(
         status: task.status,
         timestamp: new Date().toISOString(),
       });
-      controller.enqueue(`data: ${initialEvent}\n\n`);
+      controller.enqueue(encoder.encode(`data: ${initialEvent}\n\n`));
 
       // Handle cleanup on close
       request.signal.addEventListener('abort', () => {

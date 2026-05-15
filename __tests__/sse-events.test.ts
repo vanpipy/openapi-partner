@@ -96,7 +96,9 @@ describe('SSE Event System', () => {
     it('should send initial connected event', () => {
       let receivedData = '';
       const mockController = {
-        enqueue: (data: string) => { receivedData = data; },
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -134,12 +136,18 @@ describe('SSE Event System', () => {
       let receivedEvents: string[] = [];
       
       const mockController1 = {
-        enqueue: (data: string) => { receivedEvents.push(data + '_1'); },
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          receivedEvents.push(str + '_1');
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
       const mockController2 = {
-        enqueue: (data: string) => { receivedEvents.push(data + '_2'); },
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          receivedEvents.push(str + '_2');
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -165,7 +173,10 @@ describe('SSE Event System', () => {
       let receivedEvents: string[] = [];
       
       const mockController = {
-        enqueue: (data: string) => { receivedEvents.push(data); },
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          receivedEvents.push(str);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -187,7 +198,9 @@ describe('SSE Event System', () => {
       let receivedData = '';
       
       const mockController = {
-        enqueue: (data: string) => { receivedData = data; },
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -205,7 +218,9 @@ describe('SSE Event System', () => {
       let receivedData = '';
       
       const mockController = {
-        enqueue: (data: string) => { receivedData = data; },
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -223,7 +238,9 @@ describe('SSE Event System', () => {
       let receivedData = '';
       
       const mockController = {
-        enqueue: (data: string) => { receivedData = data; },
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -247,7 +264,9 @@ describe('SSE Event System', () => {
       let receivedData = '';
       
       const mockController = {
-        enqueue: (data: string) => { receivedData = data; },
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
@@ -296,7 +315,6 @@ describe('SSE Event System', () => {
 
   describe('cleanupStaleListeners', () => {
     it('should remove listeners older than maxAge', async () => {
-      // Don't rely on beforeEach cleanup - manually clean first
       cleanupStaleListeners(0);
       
       const mockController = {
@@ -338,11 +356,17 @@ describe('SSE Event System', () => {
       let events: string[] = [];
       
       const mockController = {
-        enqueue: (data: string) => { events.push(data); },
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          events.push(str);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
       const id = addTaskListener(testTaskId, mockController);
+
+      // Clear initial event
+      events = [];
 
       // Simulate task lifecycle
       broadcastTaskEvent(testTaskId, { type: 'init', status: 'PENDING' });
@@ -350,7 +374,7 @@ describe('SSE Event System', () => {
       broadcastTaskEvent(testTaskId, { type: 'progress', message: 'Generating types...' });
       broadcastTaskEvent(testTaskId, { type: 'completed', status: 'SUCCESS' });
 
-      expect(events).toHaveLength(5); // 1 init + 4 lifecycle events
+      expect(events).toHaveLength(4);
       expect(events.some(e => e.includes('init'))).toBe(true);
       expect(events.some(e => e.includes('started'))).toBe(true);
       expect(events.some(e => e.includes('progress'))).toBe(true);
@@ -364,13 +388,16 @@ describe('SSE Event System', () => {
       let events: string[] = [];
       
       const mockController = {
-        enqueue: (data: string) => { events.push(data); },
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          events.push(str);
+        },
         close: () => {},
       } as unknown as ReadableStreamDefaultController;
 
       const id = addTaskListener(testTaskId, mockController);
 
-      // Clear events from initial connection
+      // Clear initial event
       events = [];
 
       // Simulate failed task lifecycle

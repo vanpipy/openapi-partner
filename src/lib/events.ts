@@ -14,6 +14,16 @@ interface EventListener {
 // Active listeners
 const listeners = new Map<string, EventListener>();
 
+// Text encoder for SSE
+const encoder = new TextEncoder();
+
+/**
+ * Encode string to Uint8Array for streaming
+ */
+function encode(data: string): Uint8Array {
+  return encoder.encode(data);
+}
+
 /**
  * Add a listener for task events
  */
@@ -70,7 +80,7 @@ export function broadcastTaskEvent(
   for (const [id, listener] of listeners) {
     if (listener.taskId === taskId) {
       try {
-        listener.controller.enqueue(`data: ${payload}\n\n`);
+        listener.controller.enqueue(encode(`data: ${payload}\n\n`));
       } catch {
         // Listener disconnected, remove it
         listeners.delete(id);
@@ -90,7 +100,7 @@ export function sendToListener(
   if (!listener) return;
 
   try {
-    listener.controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
+    listener.controller.enqueue(encode(`data: ${JSON.stringify(event)}\n\n`));
   } catch {
     // Listener disconnected, remove it
     listeners.delete(id);
@@ -129,6 +139,5 @@ export function cleanupStaleListeners(maxAgeMs: number = 60000): number {
       cleaned++;
     }
   }
-
   return cleaned;
 }
