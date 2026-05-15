@@ -30,8 +30,7 @@ export interface CreateTokenInput {
   expiresInDays?: number;
 }
 
-export interface CreateTokenResult {
-  success: true;
+export interface CreateTokenData {
   token: string; // Plain token (only shown once)
   tokenRecord: Token;
   preview: string;
@@ -53,7 +52,7 @@ export interface TokenListItem {
 export async function createProjectToken(input: CreateTokenInput): Promise<
   | {
       success: true;
-      data: CreateTokenResult;
+      data: CreateTokenData;
     }
   | {
       success: false;
@@ -158,8 +157,7 @@ export async function getProjectTokens(projectId: number): Promise<TokenListItem
 // Token Validation (for API routes)
 // ============================================
 
-export interface ValidateTokenResult {
-  success: true;
+export interface ValidateTokenData {
   projectId: number;
   projectName: string;
   permissions: string[];
@@ -177,7 +175,7 @@ export async function validateApiToken(
 ): Promise<
   | {
       success: true;
-      data: ValidateTokenResult;
+      data: ValidateTokenData;
     }
   | {
       success: false;

@@ -91,6 +91,8 @@ export interface GeneratorOptions {
 export async function generateTypes(options: GeneratorOptions): Promise<{
   success: boolean;
   outputPath?: string;
+  outputFiles?: GeneratedFile[];
+  outputSize?: number;
   error?: string;
 }> {
   const { projectId, taskId, onProgress, onComplete, onError } = options;

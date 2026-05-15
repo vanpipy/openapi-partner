@@ -4,7 +4,6 @@ import type { Task } from './db';
 
 // Re-export TaskStatus for convenience
 export { TaskStatus };
-export type { TaskStatus } from './db';
 
 /**
  * Task Management Module
@@ -207,17 +206,17 @@ export async function listProjectTasks(
 ): Promise<Task[]> {
   const db = getDb();
 
-  let query = db
+  const baseQuery = db
     .select()
     .from(tasks)
     .where(eq(tasks.projectId, projectId))
     .orderBy(desc(tasks.createdAt));
 
   if (options?.limit) {
-    query = query.limit(options.limit);
+    return baseQuery.limit(options.limit).all();
   }
 
-  return query.all();
+  return baseQuery.all();
 }
 
 /**
@@ -310,9 +309,10 @@ export async function clearProjectTasks(projectId: number): Promise<number> {
   const result = await db
     .delete(tasks)
     .where(eq(tasks.projectId, projectId))
-    .run();
+    .returning()
+    .all();
 
-  return result.changes;
+  return result.length;
 }
 
 // ============================================

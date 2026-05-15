@@ -198,9 +198,10 @@ export async function revokeToken(tokenId: number): Promise<boolean> {
   const result = await db
     .delete(tokens)
     .where(eq(tokens.id, tokenId))
-    .run();
+    .returning()
+    .get();
 
-  return result.changes > 0;
+  return !!result;
 }
 
 /**

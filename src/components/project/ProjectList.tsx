@@ -50,8 +50,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface ProjectListItem {
   id: number;
   name: string;
-  swaggerUrl: string;
+  specUrl: string;
+  specType: string;
   outputPath: string;
+  apiVersion: string | null;
+  baseUrl: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -172,7 +175,7 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
                     </TableCell>
                     <TableCell className="max-w-[300px] truncate">
                       <span className="text-muted-foreground text-sm">
-                        {project.swaggerUrl}
+                        {project.specUrl}
                       </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">

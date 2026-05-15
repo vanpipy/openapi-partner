@@ -232,6 +232,3 @@ export function openapiPartner(userOptions: OpenAPIPartnerOptions = {}): Plugin 
     },
   };
 }
-
-// Export types
-export type { OpenAPIPartnerOptions };

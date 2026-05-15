@@ -57,7 +57,7 @@ export async function createProject(input: CreateProjectInput): Promise<{
       .insert(projects)
       .values({
         name: input.name,
-        swaggerUrl: input.swaggerUrl,
+        specUrl: input.specUrl,
         outputPath: input.outputPath ?? './generated',
         apiVersion: input.apiVersion ?? null,
         baseUrl: input.baseUrl ?? null,
