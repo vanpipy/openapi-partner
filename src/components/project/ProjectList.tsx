@@ -8,6 +8,7 @@
 import { useState, useTransition, useCallback } from 'react';
 import { deleteProject, triggerProjectSync, listProjects } from '@/app/actions/project';
 import { ProjectForm } from './ProjectForm';
+import Link from 'next/link';
 
 interface ProjectListItem {
   id: number;
@@ -98,7 +99,12 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-medium">{project.name}</h3>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="text-lg font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {project.name}
+                    </Link>
                     <span
                       className={`px-2 py-0.5 text-xs rounded ${
                         project.isActive
