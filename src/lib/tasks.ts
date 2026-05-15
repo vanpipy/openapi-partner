@@ -237,6 +237,45 @@ export async function getLatestTask(projectId: number): Promise<Task | null> {
 }
 
 /**
+ * Get pending or processing task for a project (for idempotent sync)
+ * Returns the most recently created task that is still pending/processing
+ */
+export async function getPendingOrProcessingTask(projectId: number): Promise<Task | null> {
+  const db = getDb();
+
+  // First try to get most recent task
+  const task = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .orderBy(desc(tasks.createdAt))
+    .limit(1)
+    .get();
+
+  // Check if it's pending or processing
+  if (task && (task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING)) {
+    return task;
+  }
+
+  // If the most recent is not pending/processing, check if any older task is
+  // This handles edge case where timestamps are identical
+  const allProjectTasks = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .orderBy(desc(tasks.createdAt))
+    .all();
+
+  for (const t of allProjectTasks) {
+    if (t.status === TaskStatus.PENDING || t.status === TaskStatus.PROCESSING) {
+      return t;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Count tasks by status for a project
  */
 export async function countTasksByStatus(

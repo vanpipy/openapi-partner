@@ -109,7 +109,10 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
       try {
         const result = await triggerProjectSync(projectId);
         if (result.success) {
+          // Refresh tasks immediately
           await refreshTasks();
+          // If it's a new task, the SSE will update us
+          // If it's existing, we already have the data
         }
       } finally {
         setIsSyncing(false);
@@ -140,13 +143,21 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
   }, [projectId, taskId]);
 
   useEffect(() => {
-    if (!taskId) {
-      refreshTasks();
-      return;
-    }
+    // Always refresh tasks on mount
+    refreshTasks();
 
-    const connectSSE = () => {
-      const eventSource = new EventSource(`/api/tasks/${taskId}/events`);
+    // Poll for updates every 2 seconds when syncing, otherwise every 5 seconds
+    const pollInterval = setInterval(() => {
+      if (isSyncing) {
+        refreshTasks();
+      }
+    }, isSyncing ? 2000 : 5000);
+
+    // Connect to SSE for specific task if provided
+    let eventSource: EventSource | null = null;
+
+    if (taskId) {
+      eventSource = new EventSource(`/api/tasks/${taskId}/events`);
 
       eventSource.onopen = () => {
         setIsConnected(true);
@@ -155,7 +166,8 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'status' || data.type === 'progress' || data.type === 'completed') {
+          // Refresh tasks on any task event
+          if (['init', 'started', 'progress', 'completed', 'failed'].includes(data.type)) {
             refreshTasks();
           }
         } catch (e) {
@@ -165,23 +177,21 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
 
       eventSource.onerror = () => {
         setIsConnected(false);
-        eventSource.close();
-        setTimeout(connectSSE, 5000);
+        eventSource?.close();
+        // Retry connection after 5 seconds
+        setTimeout(() => {
+          if (taskId) {
+            eventSource = new EventSource(`/api/tasks/${taskId}/events`);
+          }
+        }, 5000);
       };
-
-      return eventSource;
-    };
-
-    const eventSource = connectSSE();
-    refreshTasks();
-
-    const pollInterval = setInterval(refreshTasks, 5000);
+    }
 
     return () => {
       eventSource?.close();
       clearInterval(pollInterval);
     };
-  }, [taskId, refreshTasks]);
+  }, [taskId, refreshTasks, isSyncing]);
 
   const formatDate = (date: Date | null) => {
     if (!date) return '-';

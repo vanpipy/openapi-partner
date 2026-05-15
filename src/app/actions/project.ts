@@ -267,13 +267,15 @@ export async function getProjectWithDetails(id: number): Promise<ProjectWithDeta
 }
 
 /**
- * Trigger a sync task for a project
+ * Trigger a sync task for a project (idempotent)
+ * Returns existing task if one is already pending or processing
  */
 export async function triggerProjectSync(
   projectId: number
 ): Promise<{
   success: true;
   taskId: string;
+  isExisting: boolean;
 } | {
   success: false;
   error: string;
@@ -292,7 +294,16 @@ export async function triggerProjectSync(
     return { success: false, error: 'Project is not active' };
   }
 
-  safeLog('info', 'Creating task', { projectId, specUrl: project.specUrl });
+  // Check for existing pending/processing task (idempotency)
+  const { getPendingOrProcessingTask } = await import('@/lib/tasks');
+  const existingTask = await getPendingOrProcessingTask(projectId);
+
+  if (existingTask) {
+    safeLog('info', 'Using existing task (idempotent)', { projectId, taskId: existingTask.id });
+    return { success: true, taskId: existingTask.id, isExisting: true };
+  }
+
+  safeLog('info', 'Creating new task', { projectId, specUrl: project.specUrl });
 
   const result = await createTask({ projectId });
 
@@ -311,7 +322,19 @@ export async function triggerProjectSync(
 
   revalidatePath('/projects');
 
-  return { success: true, taskId };
+  return { success: true, taskId, isExisting: false };
+}
+
+/**
+ * Broadcast SSE event to connected clients
+ */
+async function broadcastEvent(taskId: string, type: string, data?: Record<string, unknown>) {
+  try {
+    const { broadcastTaskEvent } = await import('@/lib/events');
+    broadcastTaskEvent(taskId, { type, ...data });
+  } catch (e) {
+    safeLog('error', 'Failed to broadcast event', { taskId, error: String(e) });
+  }
 }
 
 /**
@@ -331,6 +354,9 @@ async function processTask(taskId: string, projectId: number) {
     }
 
     safeLog('info', 'Task started, beginning type generation', { taskId, projectId });
+
+    // Broadcast started event
+    await broadcastEvent(taskId, 'started', { status: 'PROCESSING' });
 
     // Log start
     await appendTaskLog(taskId, `[${new Date().toISOString()}] Starting type generation...`);
@@ -366,9 +392,23 @@ async function processTask(taskId: string, projectId: number) {
         fileCount: result.outputFiles?.length 
       });
       await appendTaskLog(taskId, `[${new Date().toISOString()}] ✓ Type generation completed successfully!`);
+      
+      // Broadcast completed event
+      await broadcastEvent(taskId, 'completed', { 
+        status: 'SUCCESS',
+        outputPath: result.outputPath,
+        outputSize: result.outputSize,
+        outputFiles: result.outputFiles
+      });
     } else {
       safeLog('error', 'Type generation failed', { taskId, projectId, error: result.error });
       await failTask(taskId, result.error || 'Unknown error');
+      
+      // Broadcast failed event
+      await broadcastEvent(taskId, 'failed', { 
+        status: 'FAILED',
+        errorMessage: result.error
+      });
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -378,6 +418,9 @@ async function processTask(taskId: string, projectId: number) {
       const { failTask } = await import('@/lib/tasks');
       await failTask(taskId, errorMessage);
       safeLog('info', 'Task marked as failed', { taskId, projectId });
+      
+      // Broadcast failed event
+      await broadcastEvent(taskId, 'failed', { status: 'FAILED', errorMessage });
     } catch (e) {
       // Ignore errors in error handling
     }
