@@ -1,11 +1,9 @@
 /**
- * Logger utility using Pino
- * Fast, professional logging for Node.js
+ * Logger utility
  * Logs are saved to ./logs directory
  */
 
-import pino from 'pino';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, appendFileSync } from 'fs';
 import { join } from 'path';
 
 // Ensure logs directory exists
@@ -18,45 +16,101 @@ if (!existsSync(logsDir)) {
 const logFile = join(logsDir, 'app.log');
 const errorLogFile = join(logsDir, 'error.log');
 
-// Create file transports
-const fileTransport = pino.transport({
-  targets: [
-    // Console output (human-readable in dev, JSON in prod)
-    {
-      target: 'pino/file',
-      level: process.env.LOG_LEVEL || 'info',
-      options: { destination: 1 } // stdout
-    },
-    // All logs to app.log
-    {
-      target: 'pino/file',
-      level: 'info',
-      options: { destination: logFile, mkdir: true }
-    },
-    // Errors only to error.log
-    {
-      target: 'pino/file',
-      level: 'error',
-      options: { destination: errorLogFile, mkdir: true }
-    }
-  ],
-  dedupe: true,
-});
+// Custom file write function
+function writeToFile(filepath: string, message: string) {
+  try {
+    appendFileSync(filepath, message + '\n');
+  } catch {
+    // Ignore file write errors
+  }
+}
 
-// Base logger configuration
-const baseLogger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  formatters: {
-    level: (label) => ({ level: label }),
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, fileTransport);
+interface LogEntry {
+  time: string;
+  level: string;
+  message: string;
+  module?: string;
+  [key: string]: unknown;
+}
+
+function formatLog(level: string, message: string, context?: object): string {
+  const entry: LogEntry = {
+    time: new Date().toISOString(),
+    level: level.toUpperCase(),
+    message,
+    ...context,
+  };
+  return JSON.stringify(entry);
+}
+
+// Base logger interface
+interface LoggerInterface {
+  trace: (obj: object | string, msg?: string) => void;
+  debug: (obj: object | string, msg?: string) => void;
+  info: (obj: object | string, msg?: string) => void;
+  warn: (obj: object | string, msg?: string) => void;
+  error: (obj: object | string, msg?: string) => void;
+  fatal: (obj: object | string, msg?: string) => void;
+  child: (context: object) => LoggerInterface;
+}
+
+function createLoggerModule(): LoggerInterface {
+  const write = (level: string, obj: object | string, msg?: string) => {
+    const message = typeof obj === 'string' ? obj : (msg || '');
+    const context = typeof obj === 'object' ? obj : {};
+    
+    const logLine = formatLog(level, message, context);
+    
+    // Console output
+    if (level === 'error' || level === 'fatal') {
+      console.error(logLine);
+    } else if (level === 'warn') {
+      console.warn(logLine);
+    } else if (level === 'debug') {
+      if (process.env.LOG_LEVEL === 'debug') {
+        console.log(logLine);
+      }
+    } else {
+      console.log(logLine);
+    }
+    
+    // File output
+    writeToFile(logFile, logLine);
+    if (level === 'error' || level === 'fatal') {
+      writeToFile(errorLogFile, logLine);
+    }
+  };
+
+  const child = (context: object): LoggerInterface => {
+    return {
+      trace: (obj: object | string, msg?: string) => write('trace', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      debug: (obj: object | string, msg?: string) => write('debug', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      info: (obj: object | string, msg?: string) => write('info', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      warn: (obj: object | string, msg?: string) => write('warn', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      error: (obj: object | string, msg?: string) => write('error', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      fatal: (obj: object | string, msg?: string) => write('fatal', { ...context, ...(typeof obj === 'object' ? obj : {}) }, typeof obj === 'string' ? obj : msg),
+      child: (additionalContext: object) => child({ ...context, ...additionalContext }),
+    };
+  };
+
+  return {
+    trace: (obj: object | string, msg?: string) => write('trace', obj, msg),
+    debug: (obj: object | string, msg?: string) => write('debug', obj, msg),
+    info: (obj: object | string, msg?: string) => write('info', obj, msg),
+    warn: (obj: object | string, msg?: string) => write('warn', obj, msg),
+    error: (obj: object | string, msg?: string) => write('error', obj, msg),
+    fatal: (obj: object | string, msg?: string) => write('fatal', obj, msg),
+    child,
+  };
+}
+
+const logger = createLoggerModule();
 
 /**
  * Create a child logger with context
  */
-export function createLogger(context: string): pino.Logger {
-  return baseLogger.child({ module: context });
+export function createLogger(context: string) {
+  return logger.child({ module: context });
 }
 
 // Pre-configured loggers for common modules
@@ -66,5 +120,5 @@ export const generatorLogger = createLogger('Generator');
 export const apiLogger = createLogger('API');
 export const projectLogger = createLogger('ProjectActions');
 
-export { baseLogger as logger };
-export default baseLogger;
+export { logger };
+export default logger;

@@ -14,13 +14,20 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('ProjectActions');
 
-// Safe logging helper
+// Safe logging helper - avoid logger crashes in async tasks
 function safeLog(level: 'info' | 'warn' | 'error' | 'debug', message: string, obj?: object) {
   try {
     if (obj) {
-      logger[level](obj, message);
+      // Call logger methods directly
+      if (level === 'info') logger.info(obj, message);
+      else if (level === 'warn') logger.warn(obj, message);
+      else if (level === 'error') logger.error(obj, message);
+      else if (level === 'debug') logger.debug(obj, message);
     } else {
-      logger[level](message);
+      if (level === 'info') logger.info(message);
+      else if (level === 'warn') logger.warn(message);
+      else if (level === 'error') logger.error(message);
+      else if (level === 'debug') logger.debug(message);
     }
   } catch {
     // Silently ignore logging errors
