@@ -8,6 +8,13 @@
       "when": 1778814464376,
       "tag": "0000_silent_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778815581869,
+      "tag": "0001_cool_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

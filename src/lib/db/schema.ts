@@ -117,6 +117,12 @@ export const tasks = sqliteTable(
     executionLog: text('execution_log'),
     startedAt: integer('started_at', { mode: 'timestamp' }),
     completedAt: integer('completed_at', { mode: 'timestamp' }),
+    // Generated files metadata
+    outputDir: text('output_dir'), // Path to generated files directory
+    outputFiles: text('output_files'), // JSON array of generated file names
+    outputSize: integer('output_size'), // Total size in bytes
+    downloadCount: integer('download_count').default(0),
+    publicToken: text('public_token'), // UUID for public download (optional)
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -124,6 +130,7 @@ export const tasks = sqliteTable(
   (table) => ({
     projectIdIdx: index('tasks_project_id_idx').on(table.projectId),
     statusIdx: index('tasks_status_idx').on(table.status),
+    publicTokenIdx: uniqueIndex('tasks_public_token_idx').on(table.publicToken),
   })
 );
 
@@ -134,6 +141,79 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
     references: [projects.id],
   }),
 }));
+
+// ============================================
+// Users Table
+// ============================================
+
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  username: text('username').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  role: text('role').notNull().default('viewer'),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// ============================================
+// Sessions Table
+// ============================================
+
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// ============================================
+// Configs Table
+// ============================================
+
+export const configs = sqliteTable('configs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+  type: text('type').notNull(),
+  environment: text('environment').notNull(),
+  description: text('description'),
+  validation: text('validation'),
+  createdBy: integer('created_by').references(() => users.id),
+  updatedBy: integer('updated_by').references(() => users.id),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+});
+
+// ============================================
+// Config History Table
+// ============================================
+
+export const configHistory = sqliteTable('config_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  configId: integer('config_id')
+    .notNull()
+    .references(() => configs.id, { onDelete: 'cascade' }),
+  oldValue: text('old_value'),
+  newValue: text('new_value').notNull(),
+  changedBy: integer('changed_by').references(() => users.id),
+  changedAt: integer('changed_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  changeReason: text('change_reason'),
+});
 
 // ============================================
 // Type exports
@@ -147,3 +227,15 @@ export type NewToken = typeof tokens.$inferInsert;
 
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
+
+export type Config = typeof configs.$inferSelect;
+export type NewConfig = typeof configs.$inferInsert;
+
+export type ConfigHistory = typeof configHistory.$inferSelect;
+export type NewConfigHistory = typeof configHistory.$inferInsert;
