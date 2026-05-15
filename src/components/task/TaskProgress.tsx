@@ -28,7 +28,12 @@ import {
   Clock, 
   Loader2,
   Wifi,
-  WifiOff
+  WifiOff,
+  Download,
+  Copy,
+  FileText,
+  ExternalLink,
+  Check
 } from 'lucide-react';
 
 interface TaskListItem {
@@ -39,6 +44,11 @@ interface TaskListItem {
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
+  outputDir?: string | null;
+  outputFiles?: string | null;
+  outputSize?: number | null;
+  downloadCount?: number | null;
+  publicToken?: string | null;
 }
 
 interface TaskStats {
@@ -335,6 +345,93 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
                       <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
                         {selectedTask.errorMessage}
                       </div>
+                    </div>
+                  )}
+                  
+                  {/* Download Section - Only for completed tasks */}
+                  {selectedTask.status === TaskStatus.SUCCESS && selectedTask.outputFiles && (
+                    <div>
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        Downloads
+                      </h4>
+                      
+                      {/* Generated Files */}
+                      <div className="mb-3">
+                        <div className="text-xs text-muted-foreground mb-2">
+                          Generated Files ({selectedTask.outputSize ? `${(selectedTask.outputSize / 1024).toFixed(1)} KB` : 'N/A'})
+                        </div>
+                        <div className="space-y-1">
+                          {JSON.parse(selectedTask.outputFiles).map((file: string) => (
+                            <div 
+                              key={file}
+                              className="flex items-center gap-2 text-sm bg-muted p-2 rounded"
+                            >
+                              <FileText className="h-3 w-3 text-muted-foreground" />
+                              <code className="flex-1">{file}</code>
+                              <a
+                                href={`/api/files/${selectedTask.id}/${file}`}
+                                download
+                                className="text-blue-600 hover:underline text-xs"
+                              >
+                                Download
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Download Buttons */}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <a
+                          href={`/api/tasks/${selectedTask.id}/download`}
+                          className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90"
+                          download
+                        >
+                          <Download className="h-4 w-4" />
+                          Download ZIP
+                        </a>
+                        
+                        <button
+                          onClick={() => {
+                            const url = `${window.location.origin}/api/public/${selectedTask.publicToken}`;
+                            navigator.clipboard.writeText(url);
+                            // Could add toast notification here
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm hover:bg-muted"
+                        >
+                          <Copy className="h-4 w-4" />
+                          Copy Public Link
+                        </button>
+                      </div>
+                      
+                      {/* Public Download Link */}
+                      {selectedTask.publicToken && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-green-700 text-sm mb-2">
+                            <ExternalLink className="h-4 w-4" />
+                            Public Download (No Auth Required)
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs bg-white p-2 rounded border overflow-x-auto">
+                              {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/public/${selectedTask.publicToken}`}
+                            </code>
+                            <button
+                              onClick={() => {
+                                const url = `${window.location.origin}/api/public/${selectedTask.publicToken}`;
+                                navigator.clipboard.writeText(url);
+                              }}
+                              className="p-2 hover:bg-green-100 rounded"
+                              title="Copy link"
+                            >
+                              <Copy className="h-4 w-4 text-green-700" />
+                            </button>
+                          </div>
+                          <div className="text-xs text-green-600 mt-1">
+                            Downloads: {selectedTask.downloadCount || 0}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
