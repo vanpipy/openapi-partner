@@ -133,7 +133,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
         {/* Tasks Tab */}
         <TabsContent value="tasks" className="space-y-6">
-          <TaskProgress projectId={projectId} />
+          <TaskProgress 
+            projectId={projectId} 
+            taskId={tasks.find(t => t.status === 'PROCESSING' || t.status === 'PENDING')?.id}
+          />
         </TabsContent>
 
         {/* Settings Tab */}

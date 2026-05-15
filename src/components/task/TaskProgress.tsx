@@ -104,11 +104,16 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
   const [, startTransition] = useTransition();
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Track current taskId for SSE connection
+  const [currentTaskId, setCurrentTaskId] = useState<string | undefined>(taskId);
+
   const handleSync = () => {
     startTransition(async () => {
       try {
         const result = await triggerProjectSync(projectId);
-        if (result.success) {
+        if (result.success && result.taskId) {
+          // Set the new task ID for SSE connection
+          setCurrentTaskId(result.taskId);
           // Refresh tasks immediately
           await refreshTasks();
           // Set active tasks to true to start polling
@@ -176,13 +181,14 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
 
   // SSE connection for specific task
   useEffect(() => {
-    if (!taskId) return;
+    if (!currentTaskId) return;
 
     let eventSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const connectSSE = () => {
-      eventSource = new EventSource(`/api/tasks/${taskId}/events`);
+      console.log(`[SSE] Connecting to task ${currentTaskId}`);
+      eventSource = new EventSource(`/api/tasks/${currentTaskId}/events`);
 
       eventSource.onopen = () => {
         setIsConnected(true);
@@ -218,7 +224,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
         clearTimeout(reconnectTimeout);
       }
     };
-  }, [taskId, refreshTasks]);
+  }, [currentTaskId, refreshTasks]);
 
   const formatDate = (date: Date | null) => {
     if (!date) return '-';
@@ -276,7 +282,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
               Sync Now
             </Button>
             
-            {taskId && (
+            {currentTaskId && (
               <div className="flex items-center gap-2 text-sm">
                 {isConnected ? (
                   <>
