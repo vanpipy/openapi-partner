@@ -2,11 +2,16 @@
 
 /**
  * Project Form Component
- * Form for creating and editing projects
+ * Form for creating and editing projects using shadcn/ui
  */
 
 import { useState, useTransition } from 'react';
 import { createProject, updateProject, type CreateProjectInput } from '@/app/actions/project';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 export interface ProjectFormProps {
   project?: {
@@ -41,7 +46,6 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
 
     startTransition(async () => {
       if (project) {
-        // Update existing project
         const result = await updateProject({
           id: project.id,
           ...input,
@@ -52,7 +56,6 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
           return;
         }
       } else {
-        // Create new project
         const result = await createProject(input);
 
         if (!result.success) {
@@ -68,80 +71,68 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-          Project Name *
-        </label>
-        <input
-          type="text"
+      <div className="space-y-2">
+        <Label htmlFor="name">Project Name *</Label>
+        <Input
           id="name"
           name="name"
           required
           defaultValue={project?.name}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="My API Project"
         />
       </div>
 
-      <div>
-        <label htmlFor="swaggerUrl" className="block text-sm font-medium text-gray-700">
-          Swagger/OpenAPI URL *
-        </label>
-        <input
-          type="url"
+      <div className="space-y-2">
+        <Label htmlFor="swaggerUrl">Swagger/OpenAPI URL *</Label>
+        <Input
           id="swaggerUrl"
           name="swaggerUrl"
+          type="url"
           required
           defaultValue={project?.swaggerUrl}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="https://petstore.swagger.io/v2/swagger.json"
         />
+        <p className="text-sm text-muted-foreground">
+          Enter the URL to your OpenAPI or Swagger specification
+        </p>
       </div>
 
-      <div>
-        <label htmlFor="outputPath" className="block text-sm font-medium text-gray-700">
-          Output Path
-        </label>
-        <input
-          type="text"
+      <div className="space-y-2">
+        <Label htmlFor="outputPath">Output Path</Label>
+        <Input
           id="outputPath"
           name="outputPath"
           defaultValue={project?.outputPath || './generated'}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="./generated"
         />
+        <p className="text-sm text-muted-foreground">
+          Directory where generated types will be saved
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="apiVersion" className="block text-sm font-medium text-gray-700">
-            API Version
-          </label>
-          <input
-            type="text"
+        <div className="space-y-2">
+          <Label htmlFor="apiVersion">API Version</Label>
+          <Input
             id="apiVersion"
             name="apiVersion"
             defaultValue={project?.apiVersion || ''}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="1.0.0"
           />
         </div>
 
-        <div>
-          <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700">
-            Base URL
-          </label>
-          <input
-            type="text"
+        <div className="space-y-2">
+          <Label htmlFor="baseUrl">Base URL</Label>
+          <Input
             id="baseUrl"
             name="baseUrl"
             defaultValue={project?.baseUrl || ''}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             placeholder="https://api.example.com"
           />
         </div>
@@ -149,21 +140,14 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
 
       <div className="flex justify-end gap-3 pt-4">
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
-        <button
-          type="submit"
-          disabled={isPending}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isPending ? 'Saving...' : project ? 'Update Project' : 'Create Project'}
-        </button>
+        <Button type="submit" disabled={isPending}>
+          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {project ? 'Update Project' : 'Create Project'}
+        </Button>
       </div>
     </form>
   );

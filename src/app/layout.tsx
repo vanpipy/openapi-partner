@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 
+const inter = Inter({ subsets: ['latin'] });
+
 export const metadata: Metadata = {
-  title: 'Config Platform',
-  description: '极速自定义配置平台',
+  title: 'API Type Automation Platform',
+  description: 'Automated TypeScript type generation from Swagger/OpenAPI specifications',
 };
 
 export default function RootLayout({
@@ -12,8 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    <html lang="en" className="antialiased">
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

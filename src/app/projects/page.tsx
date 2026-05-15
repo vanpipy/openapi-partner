@@ -5,6 +5,8 @@
 
 import { listProjects } from '@/app/actions/project';
 import { ProjectList } from '@/components/project/ProjectList';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Code, BookOpen, Zap } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,34 +14,117 @@ export default async function ProjectsPage() {
   const projects = await listProjects();
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-8">API Type Automation</h1>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <ProjectList initialProjects={projects} />
+    <div className="container mx-auto py-8 px-4 md:px-6">
+      <div className="flex flex-col space-y-8">
+        {/* Header */}
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight">API Type Automation</h1>
+          <p className="text-muted-foreground mt-2 text-lg">
+            Generate TypeScript types from your OpenAPI specifications
+          </p>
         </div>
-        
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <h3 className="text-lg font-medium mb-4">Quick Start</h3>
-            <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
-              <li>Create a new project with your Swagger URL</li>
-              <li>Generate an API token</li>
-              <li>Trigger a sync to generate types</li>
-              <li>Access generated types via token</li>
-            </ol>
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Project List */}
+          <div className="lg:col-span-2">
+            <ProjectList initialProjects={projects} />
           </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <h3 className="text-lg font-medium mb-4">API Documentation</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Use your API token to access generated types programmatically.
-            </p>
-            <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto">
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Quick Start */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-yellow-500" />
+                  Quick Start
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="list-decimal list-inside space-y-3 text-sm">
+                  <li className="space-y-1">
+                    <span className="font-medium">Create a project</span>
+                    <p className="text-muted-foreground pl-5">
+                      Add your Swagger/OpenAPI URL
+                    </p>
+                  </li>
+                  <li className="space-y-1">
+                    <span className="font-medium">Generate a token</span>
+                    <p className="text-muted-foreground pl-5">
+                      Get API access credentials
+                    </p>
+                  </li>
+                  <li className="space-y-1">
+                    <span className="font-medium">Trigger a sync</span>
+                    <p className="text-muted-foreground pl-5">
+                      Generate TypeScript types
+                    </p>
+                  </li>
+                  <li className="space-y-1">
+                    <span className="font-medium">Use the API</span>
+                    <p className="text-muted-foreground pl-5">
+                      Access types via token
+                    </p>
+                  </li>
+                </ol>
+              </CardContent>
+            </Card>
+
+            {/* API Docs */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Code className="h-5 w-5" />
+                  API Usage
+                </CardTitle>
+                <CardDescription>
+                  Access generated types programmatically
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
 {`curl -H "Authorization: Bearer <token>" \\
-  https://your-domain.com/api/types`}
-            </pre>
+  ${process.env.NEXT_PUBLIC_API_URL || 'https://your-domain.com'}/api/types`}
+                </pre>
+              </CardContent>
+            </Card>
+
+            {/* Resources */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Resources
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <a 
+                  href="https://swagger.io/specification/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  OpenAPI Specification →
+                </a>
+                <a 
+                  href="https://swagger.io/tools/swagger-codegen/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  Swagger Codegen →
+                </a>
+                <a 
+                  href="https://www.typescriptlang.org/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  TypeScript Documentation →
+                </a>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
