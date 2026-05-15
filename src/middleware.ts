@@ -14,6 +14,12 @@ const PUBLIC_PATHS = [
   '/api/health',
 ];
 
+// SSE endpoints don't require Bearer token (UI session handles auth)
+// They only stream status updates, not sensitive data
+const SSE_PATHS = [
+  '/api/tasks/',
+];
+
 // Paths that require token authentication
 const PROTECTED_PATHS = [
   '/api/',
@@ -29,8 +35,11 @@ export async function middleware(request: NextRequest) {
 
   // Check if path requires authentication
   const requiresAuth = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
+  
+  // SSE endpoints are public (they stream status only)
+  const isSSEPath = SSE_PATHS.some((path) => pathname.startsWith(path)) && pathname.endsWith('/events');
 
-  if (!requiresAuth) {
+  if (!requiresAuth || isSSEPath) {
     return NextResponse.next();
   }
 
