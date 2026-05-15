@@ -1,50 +1,42 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
-
-/**
- * Database Schema for Config Platform
- * Using Drizzle ORM with SQLite (LibSQL)
- */
 
 // ============================================
 // Enums
 // ============================================
 
-export const UserRole = {
-  VIEWER: 'viewer',
-  EDITOR: 'editor',
+export const TaskStatus = {
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  SUCCESS: 'success',
+  FAILED: 'failed',
+} as const;
+
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
+
+export const TokenPermission = {
+  READ: 'read',
+  WRITE: 'write',
   ADMIN: 'admin',
 } as const;
 
-export type UserRole = (typeof UserRole)[keyof typeof UserRole];
-
-export const ConfigType = {
-  STRING: 'string',
-  NUMBER: 'number',
-  BOOLEAN: 'boolean',
-  JSON: 'json',
-} as const;
-
-export type ConfigType = (typeof ConfigType)[keyof typeof ConfigType];
-
-export const Environment = {
-  DEVELOPMENT: 'development',
-  PRODUCTION: 'production',
-} as const;
-
-export type Environment = (typeof Environment)[keyof typeof Environment];
+export type TokenPermission = (typeof TokenPermission)[keyof typeof TokenPermission];
 
 // ============================================
-// Users Table
+// Projects Table (Core Configuration)
 // ============================================
 
-export const users = sqliteTable('users', {
+export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  username: text('username').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  role: text('role', { enum: [UserRole.VIEWER, UserRole.EDITOR, UserRole.ADMIN] })
-    .notNull()
-    .default(UserRole.VIEWER),
+  name: text('name').notNull(),
+  swaggerUrl: text('swagger_url').notNull(),
+  outputPath: text('output_path').notNull().default('./generated'),
+  apiVersion: text('api_version'),
+  baseUrl: text('base_url'),
+  customTemplates: text('custom_templates'),
+  clientOptions: text('client_options'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -53,113 +45,79 @@ export const users = sqliteTable('users', {
     .$defaultFn(() => new Date()),
 });
 
-// Users relations
-export const usersRelations = relations(users, ({ many }) => ({
-  sessions: many(sessions),
-  configsCreated: many(configs, { relationName: 'createdBy' }),
-  configsUpdated: many(configs, { relationName: 'updatedBy' }),
-  configHistory: many(configHistory),
+// Projects relations
+export const projectsRelations = relations(projects, ({ many }) => ({
+  tokens: many(tokens),
+  tasks: many(tasks),
 }));
 
 // ============================================
-// Sessions Table
+// Tokens Table (Access Authorization)
 // ============================================
 
-export const sessions = sqliteTable('sessions', {
-  id: text('id').primaryKey(), // UUID
-  userId: integer('user_id')
+export const tokens = sqliteTable('tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tokenHash: text('token_hash').notNull(),
+  projectId: integer('project_id')
     .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  permissions: text('permissions').notNull().default('["read"]'),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
 });
 
-// Sessions relations
-export const sessionsRelations = relations(sessions, ({ one }) => ({
-  user: one(users, {
-    fields: [sessions.userId],
-    references: [users.id],
+// Tokens relations
+export const tokensRelations = relations(tokens, ({ one }) => ({
+  project: one(projects, {
+    fields: [tokens.projectId],
+    references: [projects.id],
   }),
 }));
 
 // ============================================
-// Configs Table
+// Tasks Table (Sync Task Lifecycle)
 // ============================================
 
-export const configs = sqliteTable(
-  'configs',
+export const tasks = sqliteTable(
+  'tasks',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    key: text('key').notNull(),
-    value: text('value').notNull(), // JSON stringified
-    type: text('type', {
-      enum: [ConfigType.STRING, ConfigType.NUMBER, ConfigType.BOOLEAN, ConfigType.JSON],
-    }).notNull(),
-    environment: text('environment', {
-      enum: [Environment.DEVELOPMENT, Environment.PRODUCTION],
-    }).notNull(),
-    description: text('description'),
-    validation: text('validation'), // JSON Schema for validation rules
-    createdById: integer('created_by').references(() => users.id),
-    updatedById: integer('updated_by').references(() => users.id),
+    id: text('id').primaryKey(), // UUID
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    status: text('status', {
+      enum: [
+        TaskStatus.PENDING,
+        TaskStatus.PROCESSING,
+        TaskStatus.SUCCESS,
+        TaskStatus.FAILED,
+      ],
+    })
+      .notNull()
+      .default(TaskStatus.PENDING),
+    errorMessage: text('error_message'),
+    executionLog: text('execution_log'),
+    startedAt: integer('started_at', { mode: 'timestamp' }),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
-      .notNull()
-      .$defaultFn(() => new Date()),
-    deletedAt: integer('deleted_at', { mode: 'timestamp' }), // Soft delete
   },
   (table) => ({
-    // Unique constraint on key + environment
-    keyEnvironmentIdx: uniqueIndex('key_environment_idx').on(table.key, table.environment),
+    projectIdIdx: index('tasks_project_id_idx').on(table.projectId),
+    statusIdx: index('tasks_status_idx').on(table.status),
   })
 );
 
-// Configs relations
-export const configsRelations = relations(configs, ({ one, many }) => ({
-  createdBy: one(users, {
-    fields: [configs.createdById],
-    references: [users.id],
-    relationName: 'createdBy',
-  }),
-  updatedBy: one(users, {
-    fields: [configs.updatedById],
-    references: [users.id],
-    relationName: 'updatedBy',
-  }),
-  history: many(configHistory),
-}));
-
-// ============================================
-// Config History Table
-// ============================================
-
-export const configHistory = sqliteTable('config_history', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  configId: integer('config_id')
-    .notNull()
-    .references(() => configs.id, { onDelete: 'cascade' }),
-  oldValue: text('old_value'),
-  newValue: text('new_value').notNull(),
-  changedById: integer('changed_by').references(() => users.id),
-  changedAt: integer('changed_at', { mode: 'timestamp' })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  changeReason: text('change_reason'),
-});
-
-// Config History relations
-export const configHistoryRelations = relations(configHistory, ({ one }) => ({
-  config: one(configs, {
-    fields: [configHistory.configId],
-    references: [configs.id],
-  }),
-  changedBy: one(users, {
-    fields: [configHistory.changedById],
-    references: [users.id],
+// Tasks relations
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
   }),
 }));
 
@@ -167,14 +125,11 @@ export const configHistoryRelations = relations(configHistory, ({ one }) => ({
 // Type exports
 // ============================================
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
 
-export type Session = typeof sessions.$inferSelect;
-export type NewSession = typeof sessions.$inferInsert;
+export type Token = typeof tokens.$inferSelect;
+export type NewToken = typeof tokens.$inferInsert;
 
-export type Config = typeof configs.$inferSelect;
-export type NewConfig = typeof configs.$inferInsert;
-
-export type ConfigHistory = typeof configHistory.$inferSelect;
-export type NewConfigHistory = typeof configHistory.$inferInsert;
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
