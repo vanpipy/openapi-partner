@@ -1,14 +1,26 @@
 # OpenAPI Partner - API Type Automation Platform
 
-> Automated TypeScript type generation from OpenAPI specifications
+> Automated TypeScript type generation from OpenAPI/Swagger specifications
 
 ## Features
 
 - 📦 **Centralized Spec URL Management** - Store and manage multiple OpenAPI specifications
+- 🔍 **Spec Version Auto-Detection** - Automatically detects OpenAPI 3.x or Swagger 2.0
 - 🔄 **Automated Type Generation** - Generate TypeScript types using swagger-typescript-api
-- 🔐 **Token-Based Authentication** - SHA-256 hashed API tokens with permissions
+- 📁 **Task-Based Output** - Each generation creates a versioned directory
+- 📥 **Multiple Download Options** - ZIP archive, individual files, or public links
 - ⚡ **Real-Time Updates** - Server-Sent Events (SSE) for task status monitoring
-- 📊 **Task Lifecycle Tracking** - Full audit trail from pending to completion
+- 🔐 **Token-Based Authentication** - SHA-256 hashed API tokens with permissions
+- 🔌 **Vite Plugin** - Build-time type fetching for Vite projects
+
+## Supported Spec Versions
+
+| Spec | Support | Notes |
+|------|---------|-------|
+| OpenAPI 3.2.x | ✅ Native | Full support |
+| OpenAPI 3.1.x | ✅ Native | Full support |
+| OpenAPI 3.0.x | ✅ Native | Full support |
+| Swagger 2.0 | ⚙️ Auto-converts | Via swagger2openapi |
 
 ## Tech Stack
 
@@ -20,6 +32,7 @@
 | Auth | Bearer Tokens (SHA-256) |
 | Runtime | Bun |
 | Container | Docker |
+| Testing | Bun test, Playwright |
 
 ## Quick Start
 
@@ -36,7 +49,6 @@
 bun install
 
 # Run database migrations
-bunx drizzle-kit generate
 bunx drizzle-kit migrate
 
 # Start development server
@@ -59,26 +71,28 @@ docker compose logs -f
 src/
 ├── app/                    # Next.js App Router
 │   ├── actions/           # Server actions
-│   │   ├── project.ts     # Project CRUD
-│   │   ├── token.ts       # Token management
-│   │   └── tasks.ts       # Task operations
-│   ├── api/
-│   │   └── tasks/
-│   │       └── [taskId]/
-│   │           └── events/ # SSE endpoint
-│   └── projects/          # Pages
-├── components/             # React components
-│   ├── project/            # ProjectForm, ProjectList
-│   ├── token/              # TokenManager
-│   └── task/               # TaskProgress
-├── lib/                    # Core modules
-│   ├── auth.ts            # Token generation/validation
-│   ├── db/
-│   │   ├── schema.ts     # Drizzle schema
-│   │   └── index.ts      # DB connection
-│   ├── generator.ts       # Type generator
-│   └── tasks.ts           # Task lifecycle
-└── middleware.ts          # Auth middleware
+│   │   ├── project.ts    # Project CRUD
+│   │   ├── token.ts      # Token management
+│   │   └── tasks.ts      # Task operations
+│   ├── api/              # API routes
+│   │   ├── tasks/        # SSE events, download
+│   │   ├── files/        # File downloads
+│   │   ├── public/       # Public download links
+│   │   └── auth/         # Authentication
+│   └── projects/         # Pages
+├── components/            # React components
+│   ├── project/          # ProjectForm, ProjectList
+│   ├── token/           # TokenManager
+│   └── task/            # TaskProgress
+├── lib/                  # Core modules
+│   ├── auth.ts          # Token generation/validation
+│   ├── db/              # Database schema & connection
+│   ├── generator.ts     # Type generator
+│   └── tasks.ts         # Task lifecycle
+└── middleware.ts        # Auth middleware
+
+packages/
+└── vite-plugin-openapi-partner/  # Vite plugin
 ```
 
 ## Usage
@@ -90,7 +104,8 @@ import { createProject } from '@/app/actions/project';
 
 const result = await createProject({
   name: 'Pet Store API',
-  swaggerUrl: 'https://petstore.swagger.io/v2/swagger.json',
+  specUrl: 'https://petstore.swagger.io/v2/swagger.json',
+  specType: 'auto-detect', // or 'openapi3x' or 'swagger2x'
   outputPath: './generated',
 });
 ```
@@ -138,14 +153,79 @@ eventSource.onmessage = (event) => {
 };
 ```
 
-## API Authentication
-
-Include your token in requests:
+### 5. Download Generated Files
 
 ```bash
+# Download as ZIP (token required)
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://your-domain.com/api/types?projectId=1
+  https://your-domain.com/api/tasks/{taskId}/download \
+  -o task.zip
+
+# Download single file (token required)
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  https://your-domain.com/api/files/{taskId}/api.ts
+
+# Public download (no auth required)
+curl https://your-domain.com/api/public/{publicToken} -o types.zip
 ```
+
+## Generated Files Structure
+
+```
+./generated/
+└── tasks/
+    └── {task-id}/
+        ├── manifest.json          # Metadata
+        ├── api.ts               # Main API client
+        ├── data-contracts.ts    # Type definitions
+        ├── http-client.ts       # HTTP layer
+        └── route-types.ts       # Route types
+```
+
+## Vite Plugin
+
+Install the plugin in your Vite project:
+
+```bash
+bun add -D vite-plugin-openapi-partner
+```
+
+Configure in `vite.config.ts`:
+
+```typescript
+import { defineConfig } from 'vite';
+import { openapiPartner } from 'vite-plugin-openapi-partner';
+
+export default defineConfig({
+  plugins: [
+    openapiPartner({
+      // Option 1: Use project ID (fetches latest successful task)
+      projectId: 1,
+      
+      // Option 2: Use task ID (specific version)
+      // taskId: 'abc-123',
+      
+      // Output directory
+      outputDir: './src/api/generated',
+      
+      // API base URL
+      apiUrl: 'http://localhost:3000',
+      
+      // Optional: API token (if private)
+      // apiToken: process.env.OPENAPI_PARTNER_TOKEN,
+    }),
+  ],
+});
+```
+
+## API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/tasks/[id]/events` | Token | SSE task stream |
+| GET | `/api/tasks/[id]/download` | Token | Download as ZIP |
+| GET | `/api/files/[taskId]/[file]` | Token | Download single file |
+| GET | `/api/public/[token]` | None | Public download (no auth) |
 
 ## Database Schema
 
@@ -154,28 +234,17 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 | Field | Type | Description |
 |-------|------|-------------|
 | id | INTEGER | Primary key |
-| name | TEXT | Project name (unique) |
+| name | TEXT | Project name |
 | specUrl | TEXT | OpenAPI specification URL |
+| specType | TEXT | auto-detect, openapi3x, swagger2x |
+| specVersion | TEXT | Auto-detected version (e.g., "3.1.0") |
+| wasConverted | BOOLEAN | True if converted from Swagger 2.0 |
 | outputPath | TEXT | Generated types output path |
 | apiVersion | TEXT | API version (optional) |
 | baseUrl | TEXT | Base URL override (optional) |
-| isActive | INTEGER | Active status (0/1) |
-| createdAt | TEXT | ISO timestamp |
-| updatedAt | TEXT | ISO timestamp |
-
-### Tokens Table
-
-| Field | Type | Description |
-|-------|------|-------------|
-| id | INTEGER | Primary key |
-| projectId | INTEGER | Foreign key to projects |
-| name | TEXT | Token name |
-| tokenHash | TEXT | SHA-256 hash |
-| permissions | TEXT | JSON array: ["read","write"] |
-| expiresAt | TEXT | Expiration timestamp |
-| isActive | INTEGER | Active status (0/1) |
-| lastUsedAt | TEXT | Last usage timestamp |
-| createdAt | TEXT | ISO timestamp |
+| isActive | BOOLEAN | Active status |
+| createdAt | TIMESTAMP | Created time |
+| updatedAt | TIMESTAMP | Updated time |
 
 ### Tasks Table
 
@@ -186,30 +255,40 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 | status | TEXT | PENDING/PROCESSING/SUCCESS/FAILED |
 | errorMessage | TEXT | Error details (if failed) |
 | executionLog | TEXT | Execution logs |
-| startedAt | TEXT | Processing start time |
-| completedAt | TEXT | Completion time |
-| createdAt | TEXT | Task creation time |
+| outputDir | TEXT | Path to generated files |
+| outputFiles | TEXT | JSON array of file names |
+| outputSize | INTEGER | Total size in bytes |
+| downloadCount | INTEGER | Number of downloads |
+| publicToken | TEXT | UUID for public download |
+| startedAt | TIMESTAMP | Processing start time |
+| completedAt | TIMESTAMP | Completion time |
+| createdAt | TIMESTAMP | Task creation time |
+
+### Tokens Table
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | INTEGER | Primary key |
+| projectId | INTEGER | Foreign key to projects |
+| name | TEXT | Token name |
+| tokenHash | TEXT | SHA-256 hash |
+| permissions | TEXT | JSON array: ["read","write"] |
+| expiresAt | TIMESTAMP | Expiration timestamp |
+| isActive | BOOLEAN | Active status |
+| lastUsedAt | TIMESTAMP | Last usage timestamp |
+| createdAt | TIMESTAMP | ISO timestamp |
 
 ## Testing
 
 ```bash
-# Run all tests
+# Run unit tests
 bun test
 
-# Run with coverage
-bun test --coverage
+# Run E2E tests
+bun playwright test
 
 # Type check
 bunx tsc --noEmit
-```
-
-### Test Results
-
-```
- 48 pass
- 0 fail
- 119 expect() calls
-Ran 48 tests across 7 files
 ```
 
 ## Task Lifecycle
@@ -226,6 +305,11 @@ Ran 48 tests across 7 files
 ┌──────────┐          ┌─────────┐ ┌────────┐
 │ (retry)  │          │ SUCCESS │ │ FAILED │
 └──────────┘          └─────────┘ └────────┘
+                           │
+                           ▼
+                    ┌───────────┐
+                    │ DOWNLOADS │
+                    └───────────┘
 ```
 
 ## Environment Variables
