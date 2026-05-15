@@ -24,6 +24,7 @@
 | Runtime | Bun |
 | Container | Docker |
 | Testing | Bun test, Playwright (E2E) |
+| CI/CD | GitHub Actions |
 
 ## Supported Spec Versions
 
@@ -115,7 +116,7 @@ Every implementation MUST follow:
 ```
 <type>(<scope>): <subject>
 
-Types: feat, fix, test, chore, refactor
+Types: feat, fix, test, chore, refactor, docs, style, perf, ci, build, revert
 Scope: auth, db, api, ui, generator, etc.
 ```
 
@@ -145,6 +146,10 @@ bun --bun run dev
 
 # Docker build
 docker compose build
+
+# Create release tag
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ## File Naming Convention (Constitution)
@@ -174,6 +179,62 @@ docker compose build
 3. Implement in `src/lib/` or `src/app/`
 4. Run `bun test` to verify
 5. Commit with conventional message
+6. Push to trigger CI/CD pipeline
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+| Workflow | Trigger | Jobs |
+|----------|---------|------|
+| **ci.yml** | push/PR to main | lint, test, build |
+| **e2e.yml** | push/PR to main | Playwright E2E tests |
+| **release.yml** | git tags `v*` | Docker build, GitHub release |
+| **dependabot.yml** | weekly | Auto-update dependencies |
+
+### CI Pipeline
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐
+│  Lint   │ ──▶ │  Test   │ ──▶ │  Build  │
+│ (tsc)   │     │ (bun)   │     │ (next)  │
+└─────────┘     └─────────┘     └─────────┘
+```
+
+### Release Pipeline
+
+```
+┌─────────────┐     ┌─────────────┐
+│ Push tag v* │ ──▶ │ Docker Build │ ──▶ GHCR Image
+└─────────────┘     └─────────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │ GitHub Release   │
+                   └─────────────────┘
+```
+
+### Local Hooks
+
+| Hook | Purpose |
+|------|---------|
+| **pre-commit** | Runs lint-staged on staged files (tsc + tests) |
+| **commit-msg** | Validates conventional commit format |
+
+## Workflow Files
+
+```
+.github/
+├── dependabot.yml          # Dependency updates (weekly)
+└── workflows/
+    ├── ci.yml              # Lint → Test → Build
+    ├── e2e.yml             # Playwright E2E tests
+    └── release.yml          # Docker + Release on tags
+
+.husky/
+├── pre-commit            # Run lint-staged
+└── commit-msg           # Validate commit format
+```
 
 ## Skills
 
