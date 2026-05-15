@@ -8,9 +8,18 @@
     "start": "next start",
     "lint": "next lint",
     "test": "bun test",
+    "test:ci": "bun test",
+    "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "tsc --noEmit",
+      "bun test"
+    ]
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
@@ -42,6 +51,8 @@
     "@types/react-dom": "^19.0.0",
     "bun-types": "^1.1.0",
     "drizzle-kit": "^0.30.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "typescript": "^5.7.0"
   }
 }

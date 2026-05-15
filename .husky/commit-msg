@@ -1,0 +1,41 @@
+#!/usr/bin/env sh
+
+echo "📝 Validating commit message..."
+
+# Get commit message file
+commit_msg=$(cat "$1")
+
+# Commit message regex pattern
+# Format: <type>(<scope>): <subject>
+# Types: feat, fix, test, chore, refactor, docs, style, perf, ci, build, revert
+pattern="^(feat|fix|test|chore|refactor|docs|style|perf|ci|build|revert)(\([a-z0-9-]+\))?!?: .{1,100}"
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+    echo ""
+    echo "❌ Invalid commit message format!"
+    echo ""
+    echo "Expected format: <type>(<scope>): <subject>"
+    echo ""
+    echo "Valid types:"
+    echo "  feat    - New feature"
+    echo "  fix     - Bug fix"
+    echo "  test    - Adding tests"
+    echo "  chore   - Maintenance"
+    echo "  refactor - Code refactoring"
+    echo "  docs    - Documentation"
+    echo "  style   - Formatting"
+    echo "  perf    - Performance"
+    echo "  ci      - CI/CD"
+    echo "  build   - Build system"
+    echo "  revert  - Revert"
+    echo ""
+    echo "Examples:"
+    echo "  feat(api): add user authentication"
+    echo "  fix(ui): resolve button styling"
+    echo "  docs: update README"
+    echo ""
+    exit 1
+fi
+
+echo "✅ Commit message validated"
+exit 0
