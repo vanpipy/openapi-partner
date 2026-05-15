@@ -362,7 +362,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
             </div>
 
             {/* Task Details */}
-            <div className="border rounded-lg p-4">
+            <div className="border rounded-lg p-4 overflow-hidden flex flex-col">
               {selectedTask ? (
                 <div className="space-y-4">
                   <div>
@@ -476,10 +476,10 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
                   )}
 
                   {selectedTask.executionLog && (
-                    <div>
+                    <div className="flex-shrink-0">
                       <h4 className="font-medium mb-2">Execution Log</h4>
-                      <ScrollArea className="h-48">
-                        <pre className="text-xs bg-black text-green-400 p-3 rounded-lg overflow-x-auto">
+                      <ScrollArea className="h-32 w-full">
+                        <pre className="text-xs bg-black text-green-400 p-3 rounded whitespace-pre-wrap break-all max-w-full">
                           {selectedTask.executionLog}
                         </pre>
                       </ScrollArea>
