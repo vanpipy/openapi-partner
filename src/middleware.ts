@@ -1,50 +1,83 @@
+/**
+ * Middleware for request handling
+ * Token-based authentication for API routes
+ */
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { parseBearerToken, validateToken } from '@/lib/auth';
 
-// Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/health'];
+// Paths that don't require authentication
+const PUBLIC_PATHS = [
+  '/',
+  '/login',
+  '/api/health',
+];
 
-// Routes that require admin role
-const ADMIN_ROUTES = ['/api/admin'];
+// Paths that require token authentication
+const PROTECTED_PATHS = [
+  '/api/',
+];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow public routes
-  if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
+  // Allow public paths
+  if (PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
     return NextResponse.next();
   }
 
-  // Check for session cookie
-  const sessionCookie = request.cookies.get('session_id');
+  // Check if path requires authentication
+  const requiresAuth = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
 
-  // If no session and trying to access protected route
-  if (!sessionCookie) {
-    // For API routes, return 401
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // For page routes, redirect to login
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+  if (!requiresAuth) {
+    return NextResponse.next();
   }
 
-  // Admin route check would go here
-  // For now, we'll handle this in the API routes
+  // Get Authorization header
+  const authHeader = request.headers.get('Authorization');
+  const token = parseBearerToken(authHeader);
 
-  return NextResponse.next();
+  if (!token) {
+    return NextResponse.json(
+      { error: 'Missing or invalid Authorization header' },
+      { status: 401 }
+    );
+  }
+
+  // Validate token
+  const result = await validateToken(token);
+
+  if (!result.success) {
+    return NextResponse.json(
+      { error: result.error },
+      { status: 401 }
+    );
+  }
+
+  // Add project info to request headers for downstream use
+  const headers = new Headers(request.headers);
+  headers.set('x-project-id', result.project.id.toString());
+  headers.set('x-project-name', result.project.name);
+  headers.set('x-token-permissions', result.token.permissions);
+
+  // Continue with modified request
+  return NextResponse.next({
+    request: {
+      headers,
+    },
+  });
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
   ],
 };
