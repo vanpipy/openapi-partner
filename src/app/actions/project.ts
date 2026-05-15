@@ -330,8 +330,11 @@ export async function triggerProjectSync(
  */
 async function broadcastEvent(taskId: string, type: string, data?: Record<string, unknown>) {
   try {
-    const { broadcastTaskEvent } = await import('@/lib/events');
-    broadcastTaskEvent(taskId, { type, ...data });
+    const { broadcastTaskEvent, getListenerCount, getTotalListenerCount } = await import('@/lib/events');
+    const count = broadcastTaskEvent(taskId, { type, ...data });
+    const taskListeners = getListenerCount(taskId);
+    const totalListeners = getTotalListenerCount();
+    safeLog('debug', `SSE broadcast ${type} sent to ${count}/${taskListeners} task listeners (${totalListeners} total)`, { taskId, count, taskListeners, totalListeners });
   } catch (e) {
     safeLog('error', 'Failed to broadcast event', { taskId, error: String(e) });
   }

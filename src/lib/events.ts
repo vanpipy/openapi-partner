@@ -25,6 +25,13 @@ function encode(data: string): Uint8Array {
 }
 
 /**
+ * Get total listener count for debugging
+ */
+export function getTotalListenerCount(): number {
+  return listeners.size;
+}
+
+/**
  * Add a listener for task events
  */
 export function addTaskListener(
@@ -59,6 +66,7 @@ export function removeTaskListener(id: string): void {
 
 /**
  * Send event to all listeners for a specific task
+ * Returns the number of listeners the event was sent to
  */
 export function broadcastTaskEvent(
   taskId: string,
@@ -70,23 +78,29 @@ export function broadcastTaskEvent(
     errorMessage?: string;
     progress?: number;
   }
-): void {
+): number {
   const payload = JSON.stringify({
     ...event,
     taskId,
     timestamp: new Date().toISOString(),
   });
+  
+  const data = encode(`data: ${payload}\n\n`);
+  let sentCount = 0;
 
   for (const [id, listener] of listeners) {
     if (listener.taskId === taskId) {
       try {
-        listener.controller.enqueue(encode(`data: ${payload}\n\n`));
+        listener.controller.enqueue(data);
+        sentCount++;
       } catch {
         // Listener disconnected, remove it
         listeners.delete(id);
       }
     }
   }
+  
+  return sentCount;
 }
 
 /**
