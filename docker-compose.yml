@@ -1,0 +1,52 @@
+# ===========================================
+# Docker Compose for Config Platform
+# Production-ready configuration
+# ===========================================
+
+services:
+  config-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: config-platform:v1
+    container_name: config-platform
+    restart: always
+    
+    ports:
+      - "3000:3000"
+    
+    volumes:
+      # Persist SQLite database
+      - ./data:/app/data:rw
+      # Persist logs
+      - ./logs:/app/logs:rw
+    
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/config.db
+      - SESSION_SECRET=${SESSION_SECRET:-default-secret-for-dev}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    
+    env_file:
+      - .env.production
+    
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    
+    networks:
+      - config-network
+
+networks:
+  config-network:
+    driver: bridge
