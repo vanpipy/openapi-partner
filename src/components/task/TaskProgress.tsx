@@ -5,7 +5,7 @@
  * Real-time task status display with SSE updates using shadcn/ui
  */
 
-import { useState, useEffect, useCallback, useTransition } from 'react';
+import { useState, useEffect, useCallback, useTransition, useRef } from 'react';
 import { getProjectTasks, getProjectTaskStats } from '@/app/actions/tasks';
 import { triggerProjectSync } from '@/app/actions/project';
 import { TaskStatus } from '@/lib/db';
@@ -100,22 +100,28 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
   const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [hasActiveTasks, setHasActiveTasks] = useState(false);
   const [, startTransition] = useTransition();
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleSync = () => {
     startTransition(async () => {
-      setIsSyncing(true);
       try {
         const result = await triggerProjectSync(projectId);
         if (result.success) {
           // Refresh tasks immediately
           await refreshTasks();
-          // If it's a new task, the SSE will update us
-          // If it's existing, we already have the data
+          // Set active tasks to true to start polling
+          setHasActiveTasks(true);
+          // Ensure polling is running
+          if (!pollIntervalRef.current) {
+            pollIntervalRef.current = setInterval(() => {
+              refreshTasks();
+            }, 3000);
+          }
         }
-      } finally {
-        setIsSyncing(false);
+      } catch (error) {
+        console.error('Sync failed:', error);
       }
     });
   };
@@ -138,9 +144,19 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
         }
       }
 
-      // Check if all tasks are done (stop polling if no active tasks)
-      const hasActiveTasks = taskStats.pending > 0 || taskStats.processing > 0;
-      setIsSyncing(hasActiveTasks);
+      // Check if all tasks are done
+      const active = taskStats.pending > 0 || taskStats.processing > 0;
+      setHasActiveTasks(active);
+
+      // Start or stop polling based on active tasks
+      if (active && !pollIntervalRef.current) {
+        pollIntervalRef.current = setInterval(() => {
+          refreshTasks();
+        }, 3000);
+      } else if (!active && pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
       setIsLoading(false);
@@ -148,16 +164,13 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
   }, [projectId, selectedTask?.id]);
 
   useEffect(() => {
-    // Always refresh tasks on mount
+    // Initial fetch
     refreshTasks();
 
-    // Poll for updates every 3 seconds
-    const pollInterval = setInterval(() => {
-      refreshTasks();
-    }, 3000);
-
     return () => {
-      clearInterval(pollInterval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
     };
   }, [refreshTasks]);
 
@@ -254,8 +267,8 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button onClick={handleSync} disabled={isSyncing} size="sm">
-              {isSyncing ? (
+            <Button onClick={handleSync} disabled={hasActiveTasks} size="sm">
+              {hasActiveTasks ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <RefreshCw className="mr-2 h-4 w-4" />
