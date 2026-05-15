@@ -130,7 +130,7 @@ export function openapiPartner(userOptions: OpenAPIPartnerOptions = {}): Plugin 
         !cachedManifest ||
         Date.now() - cachedManifest.fetchedAt > options.cacheTtl;
       
-      if (!shouldFetch) {
+      if (!shouldFetch && cachedManifest) {
         console.log(`[openapi-partner] Using cached types from task ${cachedManifest.taskId}`);
         return;
       }

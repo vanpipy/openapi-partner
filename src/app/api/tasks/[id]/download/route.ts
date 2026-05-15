@@ -8,7 +8,9 @@ import { getDb } from '@/lib/db';
 import { tasks } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { existsSync } from 'fs';
-import archiver from 'archiver';
+import { createReadStream } from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 export async function GET(
   request: NextRequest,
@@ -51,7 +53,8 @@ export async function GET(
       .set({ downloadCount: (task.downloadCount || 0) + 1 })
       .where(eq(tasks.id, id));
     
-    // Create ZIP archive
+    // Use archiver with dynamic import
+    const archiver = (await import('archiver')).default;
     const archive = archiver('zip', { zlib: { level: 9 } });
     
     // Add all files from output directory

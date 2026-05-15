@@ -11,9 +11,6 @@ export default defineConfig({
     url: process.env.DATABASE_URL || `file:${process.env.DATABASE_PATH || './data/config.db'}`,
   },
   
-  // Migration settings
-  migrationsTable: '__drizzle_migrations',
-  
   // Print SQL statements
   verbose: true,
   
