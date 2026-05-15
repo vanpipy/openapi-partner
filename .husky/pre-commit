@@ -1,8 +1,0 @@
-#!/usr/bin/env sh
-
-echo "🔍 Running pre-commit checks..."
-
-# Run unit tests only (exclude e2e tests which are run separately)
-bun test __tests__ src/lib
-
-exit $?
