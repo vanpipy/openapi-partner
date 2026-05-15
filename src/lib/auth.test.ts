@@ -122,7 +122,7 @@ describe('Token Management', () => {
       .insert(projects)
       .values({
         name: 'Auth Test Project',
-        swaggerUrl: 'https://example.com/swagger.json',
+        specUrl: 'https://example.com/swagger.json',
       })
       .returning();
     testProjectId = project.id;

@@ -1,5 +1,5 @@
 # ===========================================
-# Multi-stage Docker Build for Config Platform
+# Multi-stage Docker Build for OpenAPI Partner
 # Base Image: oven/bun (Alpine-based for small size)
 # ===========================================
 

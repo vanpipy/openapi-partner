@@ -117,7 +117,7 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
             <DialogHeader>
               <DialogTitle>Create New Project</DialogTitle>
               <DialogDescription>
-                Add a new Swagger/OpenAPI specification to generate types
+                Add a new OpenAPI/Swagger specification to generate types
               </DialogDescription>
             </DialogHeader>
             <ProjectForm

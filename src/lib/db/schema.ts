@@ -22,6 +22,15 @@ export const TokenPermission = {
 
 export type TokenPermission = (typeof TokenPermission)[keyof typeof TokenPermission];
 
+// Spec type for OpenAPI/Swagger versions
+export const SpecType = {
+  AUTO_DETECT: 'auto-detect',
+  OPENAPI_3X: 'openapi3x',
+  SWAGGER_2X: 'swagger2x',
+} as const;
+
+export type SpecType = (typeof SpecType)[keyof typeof SpecType];
+
 // ============================================
 // Projects Table (Core Configuration)
 // ============================================
@@ -29,7 +38,12 @@ export type TokenPermission = (typeof TokenPermission)[keyof typeof TokenPermiss
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
-  swaggerUrl: text('swagger_url').notNull(),
+  specUrl: text('spec_url').notNull(), // Renamed from swaggerUrl
+  specType: text('spec_type', {
+    enum: [SpecType.AUTO_DETECT, SpecType.OPENAPI_3X, SpecType.SWAGGER_2X],
+  }).notNull().default(SpecType.AUTO_DETECT),
+  specVersion: text('spec_version'), // Auto-detected version
+  wasConvertedFromSwagger2: integer('was_converted', { mode: 'boolean' }).default(false),
   outputPath: text('output_path').notNull().default('./generated'),
   apiVersion: text('api_version'),
   baseUrl: text('base_url'),

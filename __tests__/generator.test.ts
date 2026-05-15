@@ -29,7 +29,7 @@ describe('Generator Logic', () => {
         .insert(projects)
         .values({
           name: 'Generator Lifecycle Test',
-          swaggerUrl: 'https://example.com/swagger.json',
+          specUrl: 'https://example.com/swagger.json',
         })
         .returning();
 
@@ -80,7 +80,7 @@ describe('Generator Logic', () => {
         .insert(projects)
         .values({
           name: 'Generator Failure Test',
-          swaggerUrl: 'https://fail.com/swagger.json',
+          specUrl: 'https://fail.com/swagger.json',
         })
         .returning();
 
@@ -114,7 +114,7 @@ describe('Generator Logic', () => {
         .insert(projects)
         .values({
           name: 'Progress Test',
-          swaggerUrl: 'https://progress.com/swagger.json',
+          specUrl: 'https://progress.com/swagger.json',
         })
         .returning();
 

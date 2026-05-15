@@ -36,7 +36,7 @@ describe('Task Creation', () => {
       .insert(projects)
       .values({
         name: 'Task Test Project',
-        swaggerUrl: 'https://example.com/swagger.json',
+        specUrl: 'https://example.com/swagger.json',
       })
       .returning();
     testProjectId = project.id;
@@ -84,7 +84,7 @@ describe('Task Status Updates', () => {
       .insert(projects)
       .values({
         name: 'Status Test Project',
-        swaggerUrl: 'https://example.com/swagger.json',
+        specUrl: 'https://example.com/swagger.json',
       })
       .returning();
     testProjectId = project.id;
@@ -158,7 +158,7 @@ describe('Task Queries', () => {
       .insert(projects)
       .values({
         name: 'Query Test Project',
-        swaggerUrl: 'https://example.com/swagger.json',
+        specUrl: 'https://example.com/swagger.json',
       })
       .returning();
     testProjectId = project.id;

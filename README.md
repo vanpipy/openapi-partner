@@ -1,10 +1,10 @@
-# Swagger Partner - API Type Automation Platform
+# OpenAPI Partner - API Type Automation Platform
 
-> Automated TypeScript type generation from Swagger/OpenAPI specifications
+> Automated TypeScript type generation from OpenAPI specifications
 
 ## Features
 
-- 📦 **Centralized Swagger URL Management** - Store and manage multiple OpenAPI specifications
+- 📦 **Centralized Spec URL Management** - Store and manage multiple OpenAPI specifications
 - 🔄 **Automated Type Generation** - Generate TypeScript types using swagger-typescript-api
 - 🔐 **Token-Based Authentication** - SHA-256 hashed API tokens with permissions
 - ⚡ **Real-Time Updates** - Server-Sent Events (SSE) for task status monitoring
@@ -155,7 +155,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 |-------|------|-------------|
 | id | INTEGER | Primary key |
 | name | TEXT | Project name (unique) |
-| swaggerUrl | TEXT | OpenAPI specification URL |
+| specUrl | TEXT | OpenAPI specification URL |
 | outputPath | TEXT | Generated types output path |
 | apiVersion | TEXT | API version (optional) |
 | baseUrl | TEXT | Base URL override (optional) |

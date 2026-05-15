@@ -17,7 +17,8 @@ export interface ProjectFormProps {
   project?: {
     id: number;
     name: string;
-    swaggerUrl: string;
+    specUrl: string;
+    specType: string;
     outputPath: string;
     apiVersion: string | null;
     baseUrl: string | null;
@@ -38,7 +39,8 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
 
     const input: CreateProjectInput = {
       name: formData.get('name') as string,
-      swaggerUrl: formData.get('swaggerUrl') as string,
+      specUrl: formData.get('specUrl') as string,
+      specType: formData.get('specType') as 'auto-detect' | 'openapi3x' | 'swagger2x',
       outputPath: formData.get('outputPath') as string || './generated',
       apiVersion: formData.get('apiVersion') as string || undefined,
       baseUrl: formData.get('baseUrl') as string || undefined,
@@ -48,7 +50,12 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
       if (project) {
         const result = await updateProject({
           id: project.id,
-          ...input,
+          name: input.name,
+          specUrl: input.specUrl,
+          specType: input.specType,
+          outputPath: input.outputPath,
+          apiVersion: input.apiVersion,
+          baseUrl: input.baseUrl,
         });
 
         if (!result.success) {
@@ -89,17 +96,33 @@ export function ProjectForm({ project, onSuccess, onCancel }: ProjectFormProps) 
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="swaggerUrl">Swagger/OpenAPI URL *</Label>
+        <Label htmlFor="specUrl">OpenAPI/Swagger URL *</Label>
         <Input
-          id="swaggerUrl"
-          name="swaggerUrl"
+          id="specUrl"
+          name="specUrl"
           type="url"
           required
-          defaultValue={project?.swaggerUrl}
+          defaultValue={project?.specUrl}
           placeholder="https://petstore.swagger.io/v2/swagger.json"
         />
         <p className="text-sm text-muted-foreground">
           Enter the URL to your OpenAPI or Swagger specification
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="specType">Spec Type</Label>
+        <select
+          name="specType"
+          defaultValue={project?.specType || 'auto-detect'}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="auto-detect">Auto-detect (Recommended)</option>
+          <option value="openapi3x">OpenAPI 3.x</option>
+          <option value="swagger2x">Swagger 2.0</option>
+        </select>
+        <p className="text-sm text-muted-foreground">
+          Auto-detect will identify the spec version automatically
         </p>
       </div>
 

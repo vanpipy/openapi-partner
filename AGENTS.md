@@ -1,8 +1,8 @@
-# AGENTS.md - Agent Instructions for Swagger Partner
+# AGENTS.md - Agent Instructions for OpenAPI Partner
 
 ## Project Overview
 
-**Swagger Partner** is an **API Type Automation Platform** that provides:
+**OpenAPI Partner** is an **API Type Automation Platform** that provides:
 
 1. Centralized Swagger/OpenAPI URL management
 2. Automated TypeScript type generation using swagger-typescript-api
@@ -37,7 +37,7 @@ src/
 ├── lib/                   # Core business logic
 │   ├── auth.ts           # Token generation/validation
 │   ├── db/               # Database schema & connection
-│   ├── generator.ts      # Swagger type generator
+│   ├── generator.ts      # OpenAPI type generator
 │   └── tasks.ts          # Task lifecycle management
 └── middleware.ts          # Bearer token authentication
 ```

@@ -73,13 +73,21 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           <div className="flex items-center gap-2 mt-1">
             <ExternalLink className="h-3 w-3 text-muted-foreground" />
             <a 
-              href={project.swaggerUrl} 
+              href={project.specUrl} 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-sm text-muted-foreground hover:text-blue-600"
             >
-              {project.swaggerUrl}
+              {project.specUrl}
             </a>
+            {(project.specVersion || project.specType !== 'auto-detect') && (
+              <Badge 
+                variant={project.wasConvertedFromSwagger2 ? "secondary" : "outline"}
+                className={project.wasConvertedFromSwagger2 ? "bg-yellow-100 text-yellow-800 ml-2" : "ml-2"}
+              >
+                {project.specVersion || project.specType}
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -176,18 +184,31 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               <Separator />
 
               <div className="space-y-2">
-                <div className="text-sm font-medium">Swagger URL</div>
+                <div className="text-sm font-medium">Spec URL</div>
                 <div className="flex gap-2">
                   <code className="flex-1 text-sm bg-muted p-3 rounded-lg overflow-x-auto">
-                    {project.swaggerUrl}
+                    {project.specUrl}
                   </code>
                   <Button variant="outline" size="icon" asChild>
-                    <a href={project.swaggerUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={project.specUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   </Button>
                 </div>
               </div>
+              
+              {project.specVersion && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Detected Version</div>
+                  <Badge 
+                    variant={project.wasConvertedFromSwagger2 ? "secondary" : "outline"}
+                    className={project.wasConvertedFromSwagger2 ? "bg-yellow-100 text-yellow-800" : ""}
+                  >
+                    {project.specVersion}
+                    {project.wasConvertedFromSwagger2 && ' (converted from Swagger 2.0)'}
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

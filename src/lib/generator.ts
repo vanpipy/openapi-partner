@@ -1,13 +1,22 @@
 /**
- * Swagger Type Generator
+ * OpenAPI Type Generator
  * Handles async type generation with SSE progress updates
+ * Supports OpenAPI 3.x and Swagger 2.0 with auto-detection
  */
 
 import { spawn } from 'child_process';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { getProject } from '@/app/actions/project';
+import { getProject, updateProject } from '@/app/actions/project';
 import { startProjectTask, completeProjectTask, failProjectTask, addProjectTaskLog } from '@/app/actions/tasks';
+import { SpecType } from './db/schema';
+
+// Types for spec detection
+interface SpecInfo {
+  specType: typeof SpecType[keyof typeof SpecType];
+  specVersion: string;
+  wasConverted: boolean;
+}
 
 /**
  * Generator options
@@ -41,7 +50,7 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     // Mark task as processing
     await startProjectTask(taskId, projectId);
     await addProjectTaskLog(taskId, projectId, `Starting type generation for: ${project.name}`);
-    onProgress?.(`Fetching OpenAPI spec from: ${project.swaggerUrl}`);
+    onProgress?.(`Fetching OpenAPI spec from: ${project.specUrl}`);
 
     // Create output directory
     const outputDir = project.outputPath || './generated';
@@ -52,13 +61,27 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     // Generate output file path
     const outputFile = join(outputDir, `${project.name.toLowerCase().replace(/\s+/g, '-')}-api.ts`);
 
+    // Detect spec version if auto-detect is enabled
+    let specInfo: SpecInfo = {
+      specType: project.specType,
+      specVersion: project.specVersion || 'unknown',
+      wasConverted: project.wasConvertedFromSwagger2 || false,
+    };
+
+    if (project.specType === SpecType.AUTO_DETECT) {
+      onProgress?.('Detecting OpenAPI spec version...');
+      specInfo = await detectSpecVersion(project.specUrl);
+      onProgress?.(`Detected: ${specInfo.wasConverted ? 'Swagger 2.0 (will convert)' : 'OpenAPI ' + specInfo.specVersion}`);
+    }
+
     // Call swagger-typescript-api
     // Note: In production, you'd install swagger-typescript-api as a dependency
     const result = await runSwaggerGenerator({
-      swaggerUrl: project.swaggerUrl,
+      specUrl: project.specUrl,
       outputFile,
       apiVersion: project.apiVersion || undefined,
       baseUrl: project.baseUrl || undefined,
+      specType: specInfo.specType,
       onProgress: (message) => {
         onProgress?.(message);
         addProjectTaskLog(taskId, projectId, message).catch(console.error);
@@ -66,6 +89,27 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     });
 
     if (result.success) {
+      // Update project with detected spec info if auto-detect was used
+      if (project.specType === SpecType.AUTO_DETECT) {
+        await updateProject({
+          id: projectId,
+          specType: specInfo.specType,
+        }).catch(console.error);
+        
+        // Update spec version in database directly
+        const { getDb } = await import('./db');
+        const { eq } = await import('drizzle-orm');
+        const { projects } = await import('./db/schema');
+        const db = getDb();
+        await db.update(projects)
+          .set({ 
+            specVersion: specInfo.specVersion,
+            wasConvertedFromSwagger2: specInfo.wasConverted,
+          })
+          .where(eq(projects.id, projectId))
+          .catch(console.error);
+      }
+      
       await completeProjectTask(taskId, projectId, result.logs);
       onComplete?.(outputFile);
       return { success: true, outputPath: outputFile };
@@ -85,16 +129,70 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
 /**
  * Run swagger-typescript-api CLI
  */
+/**
+ * Detect OpenAPI spec version from URL
+ * Fetches the spec and checks for 'openapi' vs 'swagger' field
+ */
+async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
+  try {
+    const response = await fetch(specUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch spec: ${response.status}`);
+    }
+    
+    const spec = await response.json();
+    
+    // Check for 'openapi' field (OpenAPI 3.x)
+    if (spec.openapi) {
+      const version = spec.openapi.toString();
+      return {
+        specType: SpecType.OPENAPI_3X,
+        specVersion: version,
+        wasConverted: false,
+      };
+    }
+    
+    // Check for 'swagger' field (Swagger 2.0)
+    if (spec.swagger === '2.0') {
+      return {
+        specType: SpecType.SWAGGER_2X,
+        specVersion: '2.0',
+        wasConverted: true,
+      };
+    }
+    
+    // Fallback: assume OpenAPI 3.0
+    return {
+      specType: SpecType.OPENAPI_3X,
+      specVersion: '3.0.0',
+      wasConverted: false,
+    };
+  } catch (error) {
+    console.error('Spec detection failed:', error);
+    // Default to auto-detect mode, will be handled by swagger-typescript-api
+    return {
+      specType: SpecType.AUTO_DETECT,
+      specVersion: 'unknown',
+      wasConverted: false,
+    };
+  }
+}
+
+/**
+ * Run swagger-typescript-api CLI
+ */
 async function runSwaggerGenerator(options: {
-  swaggerUrl: string;
+  specUrl: string;
   outputFile: string;
   apiVersion?: string;
   baseUrl?: string;
+  specType?: typeof SpecType[keyof typeof SpecType];
   onProgress?: (message: string) => void;
 }): Promise<{
   success: boolean;
   logs?: string;
   error?: string;
+  specInfo?: SpecInfo;
 }> {
   return new Promise((resolve) => {
     const logs: string[] = [];
@@ -103,7 +201,7 @@ async function runSwaggerGenerator(options: {
     const args = [
       'npx',
       'swagger-typescript-api',
-      '-p', options.swaggerUrl,
+      '-p', options.specUrl,
       '-o', options.outputFile,
     ];
 
@@ -170,7 +268,7 @@ async function runSwaggerGenerator(options: {
       
       const demoContent = `/**
  * Generated API Types
- * Source: ${options.swaggerUrl}
+ * Source: ${options.specUrl}
  * Generated: ${new Date().toISOString()}
  */
 

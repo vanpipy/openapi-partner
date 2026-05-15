@@ -29,7 +29,7 @@ describe('Schema', () => {
     it('should create a project with required fields', async () => {
       const newProject: NewProject = {
         name: 'Test API',
-        swaggerUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        specUrl: 'https://petstore.swagger.io/v2/swagger.json',
         outputPath: './generated/test-api',
         isActive: true,
       };
@@ -38,7 +38,7 @@ describe('Schema', () => {
       
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Test API');
-      expect(result[0].swaggerUrl).toBe('https://petstore.swagger.io/v2/swagger.json');
+      expect(result[0].specUrl).toBe('https://petstore.swagger.io/v2/swagger.json');
       expect(result[0].isActive).toBe(true);
       expect(result[0].createdAt).toBeInstanceOf(Date);
     });
@@ -46,7 +46,7 @@ describe('Schema', () => {
     it('should enforce unique project names', async () => {
       const duplicateProject: NewProject = {
         name: 'Test API', // Same name as previous test
-        swaggerUrl: 'https://another.url/api.json',
+        specUrl: 'https://another.url/api.json',
       };
 
       // Should throw or return error due to unique constraint
@@ -68,7 +68,7 @@ describe('Schema', () => {
         .insert(projects)
         .values({
           name: 'Token Test Project',
-          swaggerUrl: 'https://example.com/swagger.json',
+          specUrl: 'https://example.com/swagger.json',
         })
         .returning();
 
@@ -94,7 +94,7 @@ describe('Schema', () => {
         .insert(projects)
         .values({
           name: 'Task Test Project',
-          swaggerUrl: 'https://example.com/swagger.json',
+          specUrl: 'https://example.com/swagger.json',
         })
         .returning();
 
@@ -117,7 +117,7 @@ describe('Schema', () => {
         .insert(projects)
         .values({
           name: 'Task Status Project',
-          swaggerUrl: 'https://example.com/swagger.json',
+          specUrl: 'https://example.com/swagger.json',
         })
         .returning();
 

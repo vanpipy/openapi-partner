@@ -7,7 +7,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { eq, desc } from 'drizzle-orm';
-import { getDb, projects, type Project, type NewProject } from '@/lib/db';
+import { getDb, projects, type Project, type NewProject, SpecType } from '@/lib/db';
 import { createTask } from '@/lib/tasks';
 import { listTokens } from '@/lib/auth';
 
@@ -17,7 +17,8 @@ import { listTokens } from '@/lib/auth';
 
 export interface CreateProjectInput {
   name: string;
-  swaggerUrl: string;
+  specUrl: string;
+  specType?: typeof SpecType[keyof typeof SpecType];
   outputPath?: string;
   apiVersion?: string;
   baseUrl?: string;
@@ -29,7 +30,8 @@ export interface CreateProjectInput {
 export interface UpdateProjectInput {
   id: number;
   name?: string;
-  swaggerUrl?: string;
+  specUrl?: string;
+  specType?: typeof SpecType[keyof typeof SpecType];
   outputPath?: string;
   apiVersion?: string;
   baseUrl?: string;
@@ -95,7 +97,8 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
     };
 
     if (input.name !== undefined) updateData.name = input.name;
-    if (input.swaggerUrl !== undefined) updateData.swaggerUrl = input.swaggerUrl;
+    if (input.specUrl !== undefined) updateData.specUrl = input.specUrl;
+    if (input.specType !== undefined) updateData.specType = input.specType;
     if (input.outputPath !== undefined) updateData.outputPath = input.outputPath;
     if (input.apiVersion !== undefined) updateData.apiVersion = input.apiVersion;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;

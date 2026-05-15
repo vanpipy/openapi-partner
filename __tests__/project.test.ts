@@ -32,13 +32,13 @@ describe('Project Operations', () => {
         .insert(projects)
         .values({
           name: 'Test Project',
-          swaggerUrl: 'https://example.com/swagger.json',
+          specUrl: 'https://example.com/swagger.json',
           outputPath: './generated',
         })
         .returning();
 
       expect(project.name).toBe('Test Project');
-      expect(project.swaggerUrl).toBe('https://example.com/swagger.json');
+      expect(project.specUrl).toBe('https://example.com/swagger.json');
       expect(project.isActive).toBe(true);
     });
 
@@ -47,7 +47,7 @@ describe('Project Operations', () => {
         .insert(projects)
         .values({
           name: 'Update Test',
-          swaggerUrl: 'https://test.com/api.json',
+          specUrl: 'https://test.com/api.json',
         })
         .returning();
 
@@ -55,14 +55,14 @@ describe('Project Operations', () => {
         .update(projects)
         .set({
           name: 'Updated Name',
-          swaggerUrl: 'https://updated.com/api.json',
+          specUrl: 'https://updated.com/api.json',
           updatedAt: new Date(),
         })
         .where(sql`id = ${project.id}`)
         .returning();
 
       expect(updated.name).toBe('Updated Name');
-      expect(updated.swaggerUrl).toBe('https://updated.com/api.json');
+      expect(updated.specUrl).toBe('https://updated.com/api.json');
     });
 
     it('should delete a project', async () => {
@@ -70,7 +70,7 @@ describe('Project Operations', () => {
         .insert(projects)
         .values({
           name: 'Delete Test',
-          swaggerUrl: 'https://delete.com/api.json',
+          specUrl: 'https://delete.com/api.json',
         })
         .returning();
 
@@ -90,7 +90,7 @@ describe('Project Operations', () => {
         .insert(projects)
         .values({
           name: 'Cascade Test',
-          swaggerUrl: 'https://cascade.com/api.json',
+          specUrl: 'https://cascade.com/api.json',
         })
         .returning();
 
@@ -121,7 +121,7 @@ describe('Project Operations', () => {
         .insert(projects)
         .values({
           name: 'Sync Test',
-          swaggerUrl: 'https://sync.com/api.json',
+          specUrl: 'https://sync.com/api.json',
         })
         .returning();
 

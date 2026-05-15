@@ -4,12 +4,12 @@
 # ===========================================
 
 services:
-  config-platform:
+  openapi-partner:
     build:
       context: .
       dockerfile: Dockerfile
-    image: config-platform:v1
-    container_name: config-platform
+    image: openapi-partner:v1
+    container_name: openapi-partner
     restart: always
     
     ports:
@@ -45,8 +45,8 @@ services:
           memory: 256M
     
     networks:
-      - config-network
+      - openapi-network
 
 networks:
-  config-network:
+  openapi-network:
     driver: bridge
