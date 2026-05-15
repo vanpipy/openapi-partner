@@ -2,20 +2,76 @@
  * OpenAPI Type Generator
  * Handles async type generation with SSE progress updates
  * Supports OpenAPI 3.x and Swagger 2.0 with auto-detection
+ * 
+ * Generated files are stored in task-specific directories:
+ *   {outputPath}/tasks/{taskId}/
+ *     ├── manifest.json
+ *     ├── api.ts
+ *     ├── data-contracts.ts
+ *     └── ...
  */
 
 import { spawn } from 'child_process';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 import { getProject, updateProject } from '@/app/actions/project';
 import { startProjectTask, completeProjectTask, failProjectTask, addProjectTaskLog } from '@/app/actions/tasks';
 import { SpecType } from './db/schema';
+import { getDb } from './db';
+import { eq } from 'drizzle-orm';
+import { tasks, projects } from './db/schema';
 
 // Types for spec detection
 interface SpecInfo {
   specType: typeof SpecType[keyof typeof SpecType];
   specVersion: string;
   wasConverted: boolean;
+}
+
+// Generated file info for manifest
+interface GeneratedFile {
+  name: string;
+  path: string;
+  size: number;
+}
+
+interface GenerationResult {
+  success: boolean;
+  outputPath?: string;
+  outputFiles?: GeneratedFile[];
+  outputSize?: number;
+  error?: string;
+}
+
+/**
+ * Recursively collect all generated files in a directory
+ */
+function collectGeneratedFiles(dir: string): GeneratedFile[] {
+  const files: GeneratedFile[] = [];
+  
+  if (!existsSync(dir)) return files;
+  
+  const entries = readdirSync(dir, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectGeneratedFiles(fullPath));
+    } else if (entry.isFile()) {
+      const stats = statSync(fullPath);
+      // Skip manifest during collection, add it separately
+      if (entry.name !== 'manifest.json') {
+        files.push({
+          name: entry.name,
+          path: fullPath,
+          size: stats.size,
+        });
+      }
+    }
+  }
+  
+  return files;
 }
 
 /**
@@ -52,14 +108,16 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     await addProjectTaskLog(taskId, projectId, `Starting type generation for: ${project.name}`);
     onProgress?.(`Fetching OpenAPI spec from: ${project.specUrl}`);
 
-    // Create output directory
-    const outputDir = project.outputPath || './generated';
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
+    // Create task-specific output directory
+    const baseOutputDir = project.outputPath || './generated';
+    const taskOutputDir = join(baseOutputDir, 'tasks', taskId);
+    
+    if (!existsSync(taskOutputDir)) {
+      mkdirSync(taskOutputDir, { recursive: true });
     }
 
     // Generate output file path
-    const outputFile = join(outputDir, `${project.name.toLowerCase().replace(/\s+/g, '-')}-api.ts`);
+    const outputFile = join(taskOutputDir, 'api.ts');
 
     // Detect spec version if auto-detect is enabled
     let specInfo: SpecInfo = {
@@ -89,6 +147,37 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     });
 
     if (result.success) {
+      // Collect generated files info
+      const outputFiles = collectGeneratedFiles(taskOutputDir);
+      const outputSize = outputFiles.reduce((sum, f) => sum + f.size, 0);
+      
+      // Create manifest
+      const manifest = {
+        taskId,
+        projectId,
+        projectName: project.name,
+        specUrl: project.specUrl,
+        specVersion: specInfo.specVersion,
+        wasConverted: specInfo.wasConverted,
+        generatedAt: new Date().toISOString(),
+        files: outputFiles.map(f => ({ name: f.name, size: f.size })),
+      };
+      
+      // Write manifest
+      const fs = await import('fs');
+      fs.writeFileSync(
+        join(taskOutputDir, 'manifest.json'),
+        JSON.stringify(manifest, null, 2)
+      );
+      outputFiles.push({
+        name: 'manifest.json',
+        path: join(taskOutputDir, 'manifest.json'),
+        size: statSync(join(taskOutputDir, 'manifest.json')).size,
+      });
+      
+      // Generate public token
+      const publicToken = randomUUID();
+      
       // Update project with detected spec info if auto-detect was used
       if (project.specType === SpecType.AUTO_DETECT) {
         await updateProject({
@@ -97,9 +186,6 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
         }).catch(console.error);
         
         // Update spec version in database directly
-        const { getDb } = await import('./db');
-        const { eq } = await import('drizzle-orm');
-        const { projects } = await import('./db/schema');
         const db = getDb();
         await db.update(projects)
           .set({ 
@@ -110,9 +196,21 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
           .catch(console.error);
       }
       
+      // Update task with output info
+      const db = getDb();
+      await db.update(tasks)
+        .set({
+          outputDir: taskOutputDir,
+          outputFiles: JSON.stringify(outputFiles.map(f => f.name)),
+          outputSize,
+          publicToken,
+        })
+        .where(eq(tasks.id, taskId))
+        .catch(console.error);
+      
       await completeProjectTask(taskId, projectId, result.logs);
-      onComplete?.(outputFile);
-      return { success: true, outputPath: outputFile };
+      onComplete?.(taskOutputDir);
+      return { success: true, outputPath: taskOutputDir, outputFiles, outputSize };
     } else {
       throw new Error(result.error);
     }
@@ -260,20 +358,17 @@ async function runSwaggerGenerator(options: {
         options.onProgress?.(step);
       }
 
-      // Create a demo output file
-      const dir = join(process.cwd(), 'generated');
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-      }
+      // Create output files in the task directory
+      const fs = await import('fs');
+      const outputDir = join(options.outputFile, '..');
       
-      const demoContent = `/**
- * Generated API Types
- * Source: ${options.specUrl}
- * Generated: ${new Date().toISOString()}
+      // Create data-contracts.ts
+      const dataContracts = `/**
+ * Data Contracts
+ * Type definitions for API requests and responses
  */
 
 // Add your generated types here
-
 export interface ApiResponse<T = unknown> {
   data: T;
   status: number;
@@ -286,9 +381,77 @@ export interface ApiError {
   details?: Record<string, unknown>;
 }
 `;
+      fs.writeFileSync(join(outputDir, 'data-contracts.ts'), dataContracts);
+      
+      // Create http-client.ts
+      const httpClient = `/**
+ * HTTP Client
+ * Base HTTP configuration for API calls
+ */
 
-      const fs = await import('fs');
-      fs.writeFileSync(options.outputFile, demoContent);
+export interface HttpClientOptions {
+  baseUrl: string;
+  headers?: Record<string, string>;
+}
+
+export class HttpClient {
+  constructor(private options: HttpClientOptions) {}
+  
+  async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(\`\${this.options.baseUrl}\${path}\`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.options.headers,
+        ...init?.headers,
+      },
+    });
+    return response.json();
+  }
+}
+`;
+      fs.writeFileSync(join(outputDir, 'http-client.ts'), httpClient);
+      
+      // Create route-types.ts
+      const routeTypes = `/**
+ * Route Types
+ * Type definitions for API endpoints
+ */
+
+export interface RouteDefinition {
+  path: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+}
+`;
+      fs.writeFileSync(join(outputDir, 'route-types.ts'), routeTypes);
+      
+      // Create api.ts (main file)
+      const apiContent = `/**
+ * Generated API Client
+ * Source: ${options.specUrl}
+ * Generated: ${new Date().toISOString()}
+ */
+
+import { HttpClient } from './http-client';
+import type * as Contracts from './data-contracts';
+
+export { Contracts };
+
+export interface ApiClientOptions {
+  baseUrl: string;
+  token?: string;
+}
+
+export class ApiClient extends HttpClient {
+  constructor(options: ApiClientOptions) {
+    super({
+      baseUrl: options.baseUrl,
+      headers: options.token ? { Authorization: \`Bearer \${options.token}\` } : {},
+    });
+  }
+}
+`;
+      fs.writeFileSync(options.outputFile, apiContent);
 
       resolve({ success: true, logs: logs.join('\n') });
     };
