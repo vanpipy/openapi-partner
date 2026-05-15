@@ -21,6 +21,9 @@ import { SpecType } from './db/schema';
 import { getDb } from './db';
 import { eq } from 'drizzle-orm';
 import { tasks, projects } from './db/schema';
+import { createLogger } from './logger';
+
+const logger = createLogger('Generator');
 
 // Types for spec detection
 interface SpecInfo {
@@ -97,18 +100,26 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
 }> {
   const { projectId, taskId, onProgress, onComplete, onError } = options;
 
+  logger.info({ projectId, taskId }, 'Starting type generation');
+
   try {
     // Get project details
     const project = await getProject(projectId);
 
     if (!project) {
+      logger.error({ projectId, taskId }, 'Project not found');
       throw new Error('Project not found');
     }
 
+    logger.info({ projectId, taskId, name: project.name, specUrl: project.specUrl }, 'Project found');
+
     // Mark task as processing
     await startProjectTask(taskId, projectId);
+    logger.info({ taskId, projectId }, 'Task marked as processing');
+    
     await addProjectTaskLog(taskId, projectId, `Starting type generation for: ${project.name}`);
     onProgress?.(`Fetching OpenAPI spec from: ${project.specUrl}`);
+    logger.debug({ taskId, specUrl: project.specUrl }, 'Fetching spec');
 
     // Create task-specific output directory
     const baseOutputDir = project.outputPath || './generated';
@@ -219,6 +230,8 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    logger.error({ projectId, taskId, error: errorMessage, stack: error instanceof Error ? error.stack : undefined }, 'Type generation failed');
+    
     await failProjectTask(taskId, projectId, errorMessage);
     onError?.(error instanceof Error ? error : new Error(errorMessage));
     
@@ -234,17 +247,26 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
  * Fetches the spec and checks for 'openapi' vs 'swagger' field
  */
 async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
+  logger.info({ specUrl }, 'Detecting spec version');
+  
   try {
-    const response = await fetch(specUrl);
+    const response = await fetch(specUrl, { 
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+    
     if (!response.ok) {
+      logger.error({ specUrl, status: response.status }, 'Failed to fetch spec');
       throw new Error(`Failed to fetch spec: ${response.status}`);
     }
+    
+    logger.debug({ specUrl, size: response.headers.get('content-length') }, 'Spec fetched successfully');
     
     const spec = await response.json();
     
     // Check for 'openapi' field (OpenAPI 3.x)
     if (spec.openapi) {
       const version = spec.openapi.toString();
+      logger.info({ specUrl, version }, 'Detected OpenAPI spec');
       return {
         specType: SpecType.OPENAPI_3X,
         specVersion: version,
@@ -254,6 +276,7 @@ async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
     
     // Check for 'swagger' field (Swagger 2.0)
     if (spec.swagger === '2.0') {
+      logger.info({ specUrl }, 'Detected Swagger 2.0 spec (will convert)');
       return {
         specType: SpecType.SWAGGER_2X,
         specVersion: '2.0',
@@ -294,6 +317,11 @@ async function runSwaggerGenerator(options: {
   error?: string;
   specInfo?: SpecInfo;
 }> {
+  logger.info({ 
+    specUrl: options.specUrl, 
+    outputFile: options.outputFile 
+  }, 'Running swagger-typescript-api');
+
   return new Promise((resolve) => {
     const logs: string[] = [];
 
@@ -312,6 +340,8 @@ async function runSwaggerGenerator(options: {
     if (options.baseUrl) {
       args.push('--base-url', options.baseUrl);
     }
+
+    logger.debug({ args }, 'Command args');
 
     // For demo purposes, simulate the process
     // In production, uncomment the actual spawn
@@ -344,6 +374,8 @@ async function runSwaggerGenerator(options: {
 
     // Simulate for demo
     const simulateProgress = async () => {
+      logger.info('Simulating type generation');
+      
       const steps = [
         'Fetching OpenAPI specification...',
         'Parsing JSON schema...',

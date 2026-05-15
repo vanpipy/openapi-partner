@@ -10,6 +10,9 @@ import { eq, desc } from 'drizzle-orm';
 import { getDb, projects, type Project, type NewProject, SpecType } from '@/lib/db';
 import { createTask } from '@/lib/tasks';
 import { listTokens } from '@/lib/auth';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('ProjectActions');
 
 // ============================================
 // Project CRUD
@@ -67,11 +70,12 @@ export async function createProject(input: CreateProjectInput): Promise<{
       })
       .returning();
 
+    logger.info({ projectId: project.id, name: project.name }, 'Project created');
     revalidatePath('/projects');
 
     return { success: true, project };
   } catch (error) {
-    console.error('Failed to create project:', error);
+    logger.error({ err: error, name: input.name }, 'Failed to create project');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create project',
@@ -116,11 +120,12 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
       return { success: false, error: 'Project not found' };
     }
 
+    logger.info({ projectId: project.id }, 'Project updated');
     revalidatePath('/projects');
 
     return { success: true, project };
   } catch (error) {
-    console.error('Failed to update project:', error);
+    logger.error({ err: error, projectId: input.id }, 'Failed to update project');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update project',
@@ -142,11 +147,12 @@ export async function deleteProject(id: number): Promise<{
 
     await db.delete(projects).where(eq(projects.id, id));
 
+    logger.info({ projectId: id }, 'Project deleted');
     revalidatePath('/projects');
 
     return { success: true };
   } catch (error) {
-    console.error('Failed to delete project:', error);
+    logger.error({ err: error, projectId: id }, 'Failed to delete project');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete project',
@@ -252,26 +258,36 @@ export async function triggerProjectSync(
   success: false;
   error: string;
 }> {
+  logger.info({ projectId }, 'Sync triggered');
+
   const project = await getProject(projectId);
 
   if (!project) {
+    logger.warn({ projectId }, 'Project not found');
     return { success: false, error: 'Project not found' };
   }
 
   if (!project.isActive) {
+    logger.warn({ projectId }, 'Project is not active');
     return { success: false, error: 'Project is not active' };
   }
+
+  logger.info({ projectId, specUrl: project.specUrl }, 'Creating task');
 
   const result = await createTask({ projectId });
 
   if (!result.success) {
+    logger.error({ projectId, error: result.error }, 'Failed to create task');
     return { success: false, error: result.error };
   }
 
   const taskId = result.task.id;
+  logger.info({ taskId, projectId }, 'Task created, starting processing');
 
   // Start processing the task asynchronously
-  processTask(taskId, projectId).catch(console.error);
+  processTask(taskId, projectId).catch((error) => {
+    logger.error({ taskId, projectId, error }, 'Task processor crashed');
+  });
 
   revalidatePath('/projects');
 
@@ -282,45 +298,68 @@ export async function triggerProjectSync(
  * Process a task asynchronously
  */
 async function processTask(taskId: string, projectId: number) {
+  logger.info({ taskId, projectId }, 'Starting task processing');
+
   try {
     // Start the task
     const { startTask, completeTask, failTask, appendTaskLog } = await import('@/lib/tasks');
     const startResult = await startTask(taskId);
 
     if (!startResult.success) {
+      logger.error({ taskId, projectId, error: startResult.error }, 'Failed to start task');
       return;
     }
 
+    logger.info({ taskId, projectId }, 'Task started, beginning type generation');
+
     // Log start
-    await appendTaskLog(taskId, 'Starting type generation...');
+    await appendTaskLog(taskId, `[${new Date().toISOString()}] Starting type generation...`);
 
     // Import generator and run
     const { generateTypes } = await import('@/lib/generator');
 
-    await generateTypes({
+    const result = await generateTypes({
       projectId,
       taskId,
       onProgress: async (message) => {
         try {
+          logger.debug({ taskId, message }, 'Generation progress');
           await appendTaskLog(taskId, message);
         } catch (e) {
-          console.error('Failed to log progress:', e);
+          logger.error({ taskId, error: e }, 'Failed to log progress');
         }
       },
       onComplete: async (outputPath) => {
-        console.log(`Task ${taskId} completed: ${outputPath}`);
+        logger.info({ taskId, projectId, outputPath }, 'Task completed successfully');
       },
       onError: async (error) => {
-        console.error(`Task ${taskId} failed:`, error);
+        logger.error({ taskId, projectId, error: String(error) }, 'Task generation error');
       },
     });
+
+    if (result.success) {
+      logger.info({ 
+        taskId, 
+        projectId, 
+        outputPath: result.outputPath,
+        outputSize: result.outputSize,
+        fileCount: result.outputFiles?.length 
+      }, 'Type generation completed');
+      await appendTaskLog(taskId, `[${new Date().toISOString()}] ✓ Type generation completed successfully!`);
+    } else {
+      logger.error({ taskId, projectId, error: result.error }, 'Type generation failed');
+      await failTask(taskId, result.error || 'Unknown error');
+    }
   } catch (error) {
-    console.error(`Task ${taskId} processing failed:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ taskId, projectId, error: errorMessage, stack: error instanceof Error ? error.stack : undefined }, 'Task processing failed');
+    
     try {
       const { failTask } = await import('@/lib/tasks');
-      await failTask(taskId, error instanceof Error ? error.message : 'Unknown error');
+      await failTask(taskId, errorMessage);
+      logger.info({ taskId, projectId }, 'Task marked as failed');
     } catch (e) {
-      console.error('Failed to mark task as failed:', e);
+      logger.error({ taskId, error: e }, 'Failed to mark task as failed');
     }
   }
 }
