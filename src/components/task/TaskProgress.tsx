@@ -146,17 +146,24 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
     // Always refresh tasks on mount
     refreshTasks();
 
-    // Poll for updates every 2 seconds when syncing, otherwise every 5 seconds
+    // Poll for updates every 3 seconds (always, not just during sync)
     const pollInterval = setInterval(() => {
-      if (isSyncing) {
-        refreshTasks();
-      }
-    }, isSyncing ? 2000 : 5000);
+      refreshTasks();
+    }, 3000);
 
-    // Connect to SSE for specific task if provided
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [refreshTasks]);
+
+  // SSE connection for specific task
+  useEffect(() => {
+    if (!taskId) return;
+
     let eventSource: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    if (taskId) {
+    const connectSSE = () => {
       eventSource = new EventSource(`/api/tasks/${taskId}/events`);
 
       eventSource.onopen = () => {
@@ -179,19 +186,21 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
         setIsConnected(false);
         eventSource?.close();
         // Retry connection after 5 seconds
-        setTimeout(() => {
-          if (taskId) {
-            eventSource = new EventSource(`/api/tasks/${taskId}/events`);
-          }
+        reconnectTimeout = setTimeout(() => {
+          connectSSE();
         }, 5000);
       };
-    }
+    };
+
+    connectSSE();
 
     return () => {
       eventSource?.close();
-      clearInterval(pollInterval);
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
     };
-  }, [taskId, refreshTasks, isSyncing]);
+  }, [taskId, refreshTasks]);
 
   const formatDate = (date: Date | null) => {
     if (!date) return '-';
