@@ -5,11 +5,13 @@
  * Real-time task status display with SSE updates using shadcn/ui
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition } from 'react';
 import { getProjectTasks, getProjectTaskStats } from '@/app/actions/tasks';
+import { triggerProjectSync } from '@/app/actions/project';
 import { TaskStatus } from '@/lib/db';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -33,7 +35,8 @@ import {
   Copy,
   FileText,
   ExternalLink,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react';
 
 interface TaskListItem {
@@ -97,6 +100,22 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
   const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const handleSync = () => {
+    startTransition(async () => {
+      setIsSyncing(true);
+      try {
+        const result = await triggerProjectSync(projectId);
+        if (result.success) {
+          await refreshTasks();
+        }
+      } finally {
+        setIsSyncing(false);
+      }
+    });
+  };
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -210,21 +229,32 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
             </CardDescription>
           </div>
           
-          {taskId && (
-            <div className="flex items-center gap-2 text-sm">
-              {isConnected ? (
-                <>
-                  <Wifi className="h-4 w-4 text-green-600" />
-                  <span className="text-green-600">Live updates active</span>
-                </>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleSync} disabled={isSyncing} size="sm">
+              {isSyncing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <>
-                  <WifiOff className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Connecting...</span>
-                </>
+                <RefreshCw className="mr-2 h-4 w-4" />
               )}
-            </div>
-          )}
+              Sync Now
+            </Button>
+            
+            {taskId && (
+              <div className="flex items-center gap-2 text-sm">
+                {isConnected ? (
+                  <>
+                    <Wifi className="h-4 w-4 text-green-600" />
+                    <span className="text-green-600">Live</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">...</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </CardHeader>
       

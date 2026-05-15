@@ -3,12 +3,13 @@
  * Shows project details, tokens, and task history
  */
 
-import { notFound } from 'next/navigation';
-import { getProjectWithDetails } from '@/app/actions/project';
+import { notFound, redirect } from 'next/navigation';
+import { getProjectWithDetails, deleteProject } from '@/app/actions/project';
 import { getProjectTokens } from '@/app/actions/token';
 import { getProjectTasks } from '@/app/actions/tasks';
 import { TokenManager } from '@/components/token/TokenManager';
 import { TaskProgress } from '@/components/task/TaskProgress';
+import { ProjectSettings } from '@/components/project/ProjectSettings';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +26,10 @@ import {
   FolderOutput,
   Globe,
   Hash,
+  Zap,
+  Code,
+  BookOpen,
+  Terminal,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -50,6 +55,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   if (!project) {
     notFound();
   }
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://your-domain.com';
 
   return (
     <div className="container mx-auto py-8 px-4 md:px-6">
@@ -113,6 +120,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             <Settings className="h-4 w-4" />
             Settings
           </TabsTrigger>
+          <TabsTrigger value="help" className="gap-2">
+            <BookOpen className="h-4 w-4" />
+            Help
+          </TabsTrigger>
         </TabsList>
 
         {/* Tokens Tab */}
@@ -127,88 +138,153 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
         {/* Settings Tab */}
         <TabsContent value="settings" className="space-y-6">
+          <ProjectSettings project={project} />
+        </TabsContent>
+
+        {/* Help Tab */}
+        <TabsContent value="help" className="space-y-6">
+          {/* Quick Start */}
           <Card>
             <CardHeader>
-              <CardTitle>Project Configuration</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                Quick Start
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="list-decimal list-inside space-y-3 text-sm">
+                <li className="space-y-1">
+                  <span className="font-medium">Generate a token</span>
+                  <p className="text-muted-foreground pl-5">
+                    Go to API Tokens tab and create a new token
+                  </p>
+                </li>
+                <li className="space-y-1">
+                  <span className="font-medium">Trigger a sync</span>
+                  <p className="text-muted-foreground pl-5">
+                    Go to Tasks tab and click "Sync Now" to generate types
+                  </p>
+                </li>
+                <li className="space-y-1">
+                  <span className="font-medium">Access the API</span>
+                  <p className="text-muted-foreground pl-5">
+                    Use your token to access generated types
+                  </p>
+                </li>
+              </ol>
+            </CardContent>
+          </Card>
+
+          {/* API Usage */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                API Usage
+              </CardTitle>
               <CardDescription>
-                View and manage project settings
+                Access generated types programmatically
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <FolderOutput className="h-4 w-4" />
-                    <span className="text-sm font-medium">Output Path</span>
-                  </div>
-                  <p className="font-mono text-sm">{project.outputPath}</p>
-                </div>
-
-                {project.apiVersion && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Hash className="h-4 w-4" />
-                      <span className="text-sm font-medium">API Version</span>
-                    </div>
-                    <p className="font-mono text-sm">{project.apiVersion}</p>
-                  </div>
-                )}
-
-                {project.baseUrl && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Globe className="h-4 w-4" />
-                      <span className="text-sm font-medium">Base URL</span>
-                    </div>
-                    <p className="font-mono text-sm">{project.baseUrl}</p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span className="text-sm font-medium">Created</span>
-                  </div>
-                  <p className="text-sm">{new Date(project.createdAt).toLocaleString()}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span className="text-sm font-medium">Last Updated</span>
-                  </div>
-                  <p className="text-sm">{new Date(project.updatedAt).toLocaleString()}</p>
-                </div>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Fetch all types</div>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+{`curl -H "Authorization: Bearer <your-token>" \\
+  ${apiUrl}/api/types?projectId=${projectId}`}
+                </pre>
               </div>
-
-              <Separator />
 
               <div className="space-y-2">
-                <div className="text-sm font-medium">Spec URL</div>
-                <div className="flex gap-2">
-                  <code className="flex-1 text-sm bg-muted p-3 rounded-lg overflow-x-auto">
-                    {project.specUrl}
-                  </code>
-                  <Button variant="outline" size="icon" asChild>
-                    <a href={project.specUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                </div>
+                <div className="text-sm font-medium">Download as ZIP</div>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+{`curl -H "Authorization: Bearer <your-token>" \\
+  ${apiUrl}/api/tasks/<task-id>/download`}
+                </pre>
               </div>
-              
-              {project.specVersion && (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Detected Version</div>
-                  <Badge 
-                    variant={project.wasConvertedFromSwagger2 ? "secondary" : "outline"}
-                    className={project.wasConvertedFromSwagger2 ? "bg-yellow-100 text-yellow-800" : ""}
-                  >
-                    {project.specVersion}
-                    {project.wasConvertedFromSwagger2 && ' (converted from Swagger 2.0)'}
-                  </Badge>
-                </div>
-              )}
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Get task status</div>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+{`curl -H "Authorization: Bearer <your-token>" \\
+  ${apiUrl}/api/tasks/<task-id>/events`}
+                </pre>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Vite Plugin */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Terminal className="h-5 w-5" />
+                Vite Plugin
+              </CardTitle>
+              <CardDescription>
+                Auto-import types in your Vite project
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Install</div>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+{`npm install vite-plugin-openapi-partner`}
+                </pre>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">vite.config.ts</div>
+                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">
+{`import { defineConfig } from 'vite';
+import openapiPartner from 'vite-plugin-openapi-partner';
+
+export default defineConfig({
+  plugins: [
+    openapiPartner({
+      apiUrl: '${apiUrl}',
+      projectId: ${projectId},
+      apiKey: '<your-token>',
+    }),
+  ],
+});`}
+                </pre>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Resources */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                Resources
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <a 
+                href="https://swagger.io/specification/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-blue-600 hover:underline"
+              >
+                OpenAPI Specification →
+              </a>
+              <a 
+                href="https://swagger.io/tools/swagger-codegen/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-blue-600 hover:underline"
+              >
+                Swagger Codegen →
+              </a>
+              <a 
+                href="https://www.typescriptlang.org/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-blue-600 hover:underline"
+              >
+                TypeScript Documentation →
+              </a>
             </CardContent>
           </Card>
         </TabsContent>

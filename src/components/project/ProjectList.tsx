@@ -2,15 +2,14 @@
 
 /**
  * Project List Component
- * Display list of projects with actions using shadcn/ui
+ * Display list of projects with links to detail page
  */
 
-import { useState, useTransition, useCallback } from 'react';
-import { deleteProject, triggerProjectSync, listProjects } from '@/app/actions/project';
-import { ProjectForm } from './ProjectForm';
+import { useState, useCallback } from 'react';
+import { listProjects } from '@/app/actions/project';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   Table, 
@@ -29,23 +28,11 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { 
-  Plus, 
-  MoreHorizontal, 
-  RefreshCw, 
-  Pencil, 
-  Trash2,
+  Plus,
   ExternalLink,
-  Loader2
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ProjectForm } from './ProjectForm';
 
 interface ProjectListItem {
   id: number;
@@ -66,38 +53,12 @@ interface ProjectListProps {
 
 export function ProjectList({ initialProjects }: ProjectListProps) {
   const [projects, setProjects] = useState(initialProjects);
-  const [isPending, startTransition] = useTransition();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null);
-  const [syncingProjectId, setSyncingProjectId] = useState<number | null>(null);
 
   const refreshProjects = useCallback(async () => {
     const updatedProjects = await listProjects();
     setProjects(updatedProjects);
   }, []);
-
-  const handleDelete = (id: number) => {
-    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) return;
-
-    startTransition(async () => {
-      await deleteProject(id);
-      await refreshProjects();
-    });
-  };
-
-  const handleSync = (id: number) => {
-    startTransition(async () => {
-      setSyncingProjectId(id);
-      try {
-        const result = await triggerProjectSync(id);
-        if (result.success) {
-          console.log('Sync started:', result.taskId);
-        }
-      } finally {
-        setSyncingProjectId(null);
-      }
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -156,10 +117,9 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Swagger URL</TableHead>
+                  <TableHead>Spec URL</TableHead>
                   <TableHead>Output</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -168,9 +128,10 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
                     <TableCell>
                       <Link 
                         href={`/projects/${project.id}`}
-                        className="font-medium text-blue-600 hover:underline"
+                        className="font-medium text-blue-600 hover:underline flex items-center gap-2"
                       >
                         {project.name}
+                        <ExternalLink className="h-3 w-3" />
                       </Link>
                     </TableCell>
                     <TableCell className="max-w-[300px] truncate">
@@ -186,48 +147,6 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
                         {project.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" disabled={isPending}>
-                            {syncingProjectId === project.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <MoreHorizontal className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem asChild>
-                            <Link href={`/projects/${project.id}`}>
-                              <ExternalLink className="mr-2 h-4 w-4" />
-                              View Details
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleSync(project.id)}
-                            disabled={!project.isActive || syncingProjectId === project.id}
-                          >
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Sync Types
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setEditingProject(project)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(project.id)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -235,28 +154,6 @@ export function ProjectList({ initialProjects }: ProjectListProps) {
           </CardContent>
         </Card>
       )}
-
-      {/* Edit Dialog */}
-      <Dialog open={!!editingProject} onOpenChange={() => setEditingProject(null)}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
-            <DialogDescription>
-              Update project settings and configuration
-            </DialogDescription>
-          </DialogHeader>
-          {editingProject && (
-            <ProjectForm
-              project={editingProject}
-              onSuccess={() => {
-                setEditingProject(null);
-                refreshProjects();
-              }}
-              onCancel={() => setEditingProject(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
