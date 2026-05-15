@@ -184,37 +184,105 @@ curl https://your-domain.com/api/public/{publicToken} -o types.zip
 
 ## Vite Plugin
 
-Install the plugin in your Vite project:
+The Vite plugin auto-fetches generated API types when your dev server starts.
+
+### Installation
+
+Install directly from the Git repository:
 
 ```bash
-bun add -D vite-plugin-openapi-partner
+# Using bun (recommended)
+bun add vite-plugin-openapi-partner@https://github.com/your-org/openapi-partner.git#main
+
+# Using npm
+npm install vite-plugin-openapi-partner@https://github.com/your-org/openapi-partner.git#main
+
+# Using yarn
+yarn add vite-plugin-openapi-partner@https://github.com/your-org/openapi-partner.git#main
 ```
 
-Configure in `vite.config.ts`:
+You can also specify a specific version:
+
+```bash
+# From a tag
+bun add vite-plugin-openapi-partner@https://github.com/your-org/openapi-partner.git#v0.1.0
+
+# From a commit hash
+bun add vite-plugin-openapi-partner@https://github.com/your-org/openapi-partner.git#abc123def
+```
+
+### Configuration
 
 ```typescript
+// vite.config.ts
 import { defineConfig } from 'vite';
-import { openapiPartner } from 'vite-plugin-openapi-partner';
+import openapiPartner from 'vite-plugin-openapi-partner';
 
 export default defineConfig({
   plugins: [
     openapiPartner({
-      // Option 1: Use project ID (fetches latest successful task)
+      // OpenAPI Partner API URL
+      apiUrl: 'https://api.openapi-partner.example.com',
+      
+      // Your project ID
       projectId: 1,
       
-      // Option 2: Use task ID (specific version)
-      // taskId: 'abc-123',
+      // API token for authentication
+      apiKey: process.env.OPENAPI_PARTNER_TOKEN!,
       
-      // Output directory
-      outputDir: './src/api/generated',
-      
-      // API base URL
-      apiUrl: 'http://localhost:3000',
-      
-      // Optional: API token (if private)
-      // apiToken: process.env.OPENAPI_PARTNER_TOKEN,
+      // Output directory for generated types
+      outputPath: './src/api/generated',
     }),
   ],
+});
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `apiUrl` | `string` | required | OpenAPI Partner API base URL |
+| `projectId` | `number` | required | Your project ID |
+| `apiKey` | `string` | required | API token for authentication |
+| `outputPath` | `string` | `./src/api/generated` | Where to save generated types |
+| `autoFetch` | `boolean` | `true` | Auto-fetch on server start |
+
+### How It Works
+
+1. When `vite dev` starts, the plugin fetches the latest API types
+2. Types are saved to your configured `outputPath`
+3. Import them in your code:
+
+```typescript
+// src/api/client.ts
+import { ApiClient } from './generated/api';
+
+// Now you have full type safety
+const client = new ApiClient();
+const users = await client.getUsers();
+```
+
+### Programmatic Usage
+
+You can also use the fetcher directly:
+
+```typescript
+import { fetchTypes, downloadZip } from 'vite-plugin-openapi-partner/fetcher';
+
+// Fetch latest types
+await fetchTypes({
+  apiUrl: 'https://api.example.com',
+  projectId: 1,
+  apiKey: 'your-token',
+  outputPath: './src/api/generated',
+});
+
+// Download specific task as ZIP
+await downloadZip({
+  apiUrl: 'https://api.example.com',
+  taskId: 'task-uuid',
+  apiKey: 'your-token',
+  outputPath: './downloads/types.zip',
 });
 ```
 
@@ -222,7 +290,7 @@ export default defineConfig({
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/tasks/[id]/events` | Token | SSE task stream |
+| GET | `/api/tasks/[id]/events` | None | SSE task stream (public) |
 | GET | `/api/tasks/[id]/download` | Token | Download as ZIP |
 | GET | `/api/files/[taskId]/[file]` | Token | Download single file |
 | GET | `/api/public/[token]` | None | Public download (no auth) |
