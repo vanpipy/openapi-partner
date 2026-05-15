@@ -130,23 +130,28 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
       setStats(taskStats);
       setIsLoading(false);
 
-      if (taskId) {
-        const currentTask = taskList.find((t) => t.id === taskId);
-        if (currentTask) {
-          setSelectedTask(currentTask);
+      // Update selected task if one is selected (by prop or manually)
+      if (selectedTask?.id) {
+        const updatedTask = taskList.find((t) => t.id === selectedTask.id);
+        if (updatedTask) {
+          setSelectedTask(updatedTask);
         }
       }
+
+      // Check if all tasks are done (stop polling if no active tasks)
+      const hasActiveTasks = taskStats.pending > 0 || taskStats.processing > 0;
+      setIsSyncing(hasActiveTasks);
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
       setIsLoading(false);
     }
-  }, [projectId, taskId]);
+  }, [projectId, selectedTask?.id]);
 
   useEffect(() => {
     // Always refresh tasks on mount
     refreshTasks();
 
-    // Poll for updates every 3 seconds (always, not just during sync)
+    // Poll for updates every 3 seconds
     const pollInterval = setInterval(() => {
       refreshTasks();
     }, 3000);
