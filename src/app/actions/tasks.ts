@@ -95,11 +95,13 @@ export async function getProjectTaskStats(projectId: number): Promise<{
 }
 
 // ============================================
-// Task Lifecycle Actions
+// Task Lifecycle Actions (for async task processing)
+// Note: These functions don't call revalidatePath to avoid errors
+// when called from async code outside server action context
 // ============================================
 
 /**
- * Start processing a task
+ * Start processing a task (async-safe, no revalidatePath)
  */
 export async function startProjectTask(
   taskId: string,
@@ -117,13 +119,13 @@ export async function startProjectTask(
     return { success: false, error: result.error };
   }
 
-  revalidatePath(`/projects/${projectId}/tasks`);
+  // Note: No revalidatePath here - this is called from async context
 
   return { success: true, task: result.task };
 }
 
 /**
- * Complete a task successfully
+ * Complete a task successfully (async-safe, no revalidatePath)
  */
 export async function completeProjectTask(
   taskId: string,
@@ -142,13 +144,13 @@ export async function completeProjectTask(
     return { success: false, error: result.error };
   }
 
-  revalidatePath(`/projects/${projectId}/tasks`);
+  // Note: No revalidatePath here - this is called from async context
 
   return { success: true, task: result.task };
 }
 
 /**
- * Mark a task as failed
+ * Mark a task as failed (async-safe, no revalidatePath)
  */
 export async function failProjectTask(
   taskId: string,
@@ -168,13 +170,13 @@ export async function failProjectTask(
     return { success: false, error: result.error };
   }
 
-  revalidatePath(`/projects/${projectId}/tasks`);
+  // Note: No revalidatePath here - this is called from async context
 
   return { success: true, task: result.task };
 }
 
 /**
- * Add a log message to a task
+ * Add a log message to a task (async-safe, no revalidatePath)
  */
 export async function addProjectTaskLog(
   taskId: string,
@@ -189,7 +191,7 @@ export async function addProjectTaskLog(
   try {
     await appendTaskLog(taskId, message);
 
-    revalidatePath(`/projects/${projectId}/tasks`);
+    // Note: No revalidatePath here - this is called from async context
 
     return { success: true };
   } catch (error) {
