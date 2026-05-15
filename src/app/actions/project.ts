@@ -14,6 +14,19 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('ProjectActions');
 
+// Safe logging helper
+function safeLog(level: 'info' | 'warn' | 'error' | 'debug', message: string, obj?: object) {
+  try {
+    if (obj) {
+      logger[level](obj, message);
+    } else {
+      logger[level](message);
+    }
+  } catch {
+    // Silently ignore logging errors
+  }
+}
+
 // ============================================
 // Project CRUD
 // ============================================
@@ -70,12 +83,12 @@ export async function createProject(input: CreateProjectInput): Promise<{
       })
       .returning();
 
-    logger.info({ projectId: project.id, name: project.name }, 'Project created');
+    safeLog('info', 'Project created', { projectId: project.id, name: project.name });
     revalidatePath('/projects');
 
     return { success: true, project };
   } catch (error) {
-    logger.error({ err: error, name: input.name }, 'Failed to create project');
+    safeLog('error', 'Failed to create project', { err: error, name: input.name });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create project',
@@ -120,12 +133,12 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
       return { success: false, error: 'Project not found' };
     }
 
-    logger.info({ projectId: project.id }, 'Project updated');
+    safeLog('info', 'Project updated', { projectId: project.id });
     revalidatePath('/projects');
 
     return { success: true, project };
   } catch (error) {
-    logger.error({ err: error, projectId: input.id }, 'Failed to update project');
+    safeLog('error', 'Failed to update project', { err: error, projectId: input.id });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update project',
@@ -147,12 +160,12 @@ export async function deleteProject(id: number): Promise<{
 
     await db.delete(projects).where(eq(projects.id, id));
 
-    logger.info({ projectId: id }, 'Project deleted');
+    safeLog('info', 'Project deleted', { projectId: id });
     revalidatePath('/projects');
 
     return { success: true };
   } catch (error) {
-    logger.error({ err: error, projectId: id }, 'Failed to delete project');
+    safeLog('error', 'Failed to delete project', { err: error, projectId: id });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete project',
@@ -258,35 +271,35 @@ export async function triggerProjectSync(
   success: false;
   error: string;
 }> {
-  logger.info({ projectId }, 'Sync triggered');
+  safeLog('info', 'Sync triggered', { projectId });
 
   const project = await getProject(projectId);
 
   if (!project) {
-    logger.warn({ projectId }, 'Project not found');
+    safeLog('warn', 'Project not found', { projectId });
     return { success: false, error: 'Project not found' };
   }
 
   if (!project.isActive) {
-    logger.warn({ projectId }, 'Project is not active');
+    safeLog('warn', 'Project is not active', { projectId });
     return { success: false, error: 'Project is not active' };
   }
 
-  logger.info({ projectId, specUrl: project.specUrl }, 'Creating task');
+  safeLog('info', 'Creating task', { projectId, specUrl: project.specUrl });
 
   const result = await createTask({ projectId });
 
   if (!result.success) {
-    logger.error({ projectId, error: result.error }, 'Failed to create task');
+    safeLog('error', 'Failed to create task', { projectId, error: result.error });
     return { success: false, error: result.error };
   }
 
   const taskId = result.task.id;
-  logger.info({ taskId, projectId }, 'Task created, starting processing');
+  safeLog('info', 'Task created, starting processing', { taskId, projectId });
 
   // Start processing the task asynchronously
   processTask(taskId, projectId).catch((error) => {
-    logger.error({ taskId, projectId, error }, 'Task processor crashed');
+    safeLog('error', 'Task processor crashed', { taskId, projectId, error: String(error) });
   });
 
   revalidatePath('/projects');
@@ -298,19 +311,19 @@ export async function triggerProjectSync(
  * Process a task asynchronously
  */
 async function processTask(taskId: string, projectId: number) {
-  logger.info({ taskId, projectId }, 'Starting task processing');
+  safeLog('info', 'Starting task processing', { taskId, projectId });
 
   try {
     // Start the task
-    const { startTask, completeTask, failTask, appendTaskLog } = await import('@/lib/tasks');
+    const { startTask, failTask, appendTaskLog } = await import('@/lib/tasks');
     const startResult = await startTask(taskId);
 
     if (!startResult.success) {
-      logger.error({ taskId, projectId, error: startResult.error }, 'Failed to start task');
+      safeLog('error', 'Failed to start task', { taskId, projectId, error: startResult.error });
       return;
     }
 
-    logger.info({ taskId, projectId }, 'Task started, beginning type generation');
+    safeLog('info', 'Task started, beginning type generation', { taskId, projectId });
 
     // Log start
     await appendTaskLog(taskId, `[${new Date().toISOString()}] Starting type generation...`);
@@ -323,43 +336,43 @@ async function processTask(taskId: string, projectId: number) {
       taskId,
       onProgress: async (message) => {
         try {
-          logger.debug({ taskId, message }, 'Generation progress');
+          safeLog('debug', 'Generation progress', { taskId, message });
           await appendTaskLog(taskId, message);
         } catch (e) {
-          logger.error({ taskId, error: e }, 'Failed to log progress');
+          safeLog('error', 'Failed to log progress', { taskId, error: String(e) });
         }
       },
       onComplete: async (outputPath) => {
-        logger.info({ taskId, projectId, outputPath }, 'Task completed successfully');
+        safeLog('info', 'Task completed successfully', { taskId, projectId, outputPath });
       },
       onError: async (error) => {
-        logger.error({ taskId, projectId, error: String(error) }, 'Task generation error');
+        safeLog('error', 'Task generation error', { taskId, projectId, error: String(error) });
       },
     });
 
     if (result.success) {
-      logger.info({ 
+      safeLog('info', 'Type generation completed', { 
         taskId, 
         projectId, 
         outputPath: result.outputPath,
         outputSize: result.outputSize,
         fileCount: result.outputFiles?.length 
-      }, 'Type generation completed');
+      });
       await appendTaskLog(taskId, `[${new Date().toISOString()}] ✓ Type generation completed successfully!`);
     } else {
-      logger.error({ taskId, projectId, error: result.error }, 'Type generation failed');
+      safeLog('error', 'Type generation failed', { taskId, projectId, error: result.error });
       await failTask(taskId, result.error || 'Unknown error');
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ taskId, projectId, error: errorMessage, stack: error instanceof Error ? error.stack : undefined }, 'Task processing failed');
+    safeLog('error', 'Task processing failed', { taskId, projectId, error: errorMessage, stack: error instanceof Error ? error.stack : undefined });
     
     try {
       const { failTask } = await import('@/lib/tasks');
       await failTask(taskId, errorMessage);
-      logger.info({ taskId, projectId }, 'Task marked as failed');
+      safeLog('info', 'Task marked as failed', { taskId, projectId });
     } catch (e) {
-      logger.error({ taskId, error: e }, 'Failed to mark task as failed');
+      // Ignore errors in error handling
     }
   }
 }
