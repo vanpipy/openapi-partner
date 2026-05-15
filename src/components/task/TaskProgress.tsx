@@ -72,25 +72,25 @@ const statusConfig = {
     label: 'Pending',
     icon: Clock,
     variant: 'secondary' as const,
-    color: 'text-muted-foreground',
+    badgeClassName: 'bg-gray-100 text-gray-600 border-gray-300',
   },
   [TaskStatus.PROCESSING]: {
     label: 'Processing',
     icon: Loader2,
-    variant: 'default' as const,
-    color: 'text-blue-600',
+    variant: 'secondary' as const,
+    badgeClassName: 'bg-blue-100 text-blue-700 border-blue-300 animate-pulse',
   },
   [TaskStatus.SUCCESS]: {
     label: 'Success',
     icon: CheckCircle2,
     variant: 'default' as const,
-    color: 'text-green-600',
+    badgeClassName: 'bg-green-100 text-green-700 border-green-300',
   },
   [TaskStatus.FAILED]: {
     label: 'Failed',
     icon: XCircle,
     variant: 'destructive' as const,
-    color: 'text-red-600',
+    badgeClassName: 'bg-red-100 text-red-700 border-red-300',
   },
 };
 
@@ -346,7 +346,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
                           </code>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={config.variant} className={config.color}>
+                          <Badge variant={config.variant} className={config.badgeClassName}>
                             <StatusIcon className={`h-3 w-3 mr-1 ${task.status === TaskStatus.PROCESSING ? 'animate-spin' : ''}`} />
                             {config.label}
                           </Badge>
