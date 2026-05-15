@@ -13,6 +13,8 @@ import {
   removeTaskListener,
   broadcastTaskEvent,
   getListenerCount,
+  getTotalListenerCount,
+  sendToListener,
   cleanupStaleListeners,
 } from '@/lib/events';
 
@@ -110,6 +112,24 @@ describe('SSE Event System', () => {
       // Cleanup
       removeTaskListener(listenerId);
     });
+
+    it('should increment total listener count', () => {
+      const initialCount = getTotalListenerCount();
+      
+      const mockController = {
+        enqueue: () => {},
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id1 = addTaskListener(testTaskId, mockController);
+      const id2 = addTaskListener(testTaskId, mockController);
+
+      expect(getTotalListenerCount()).toBe(initialCount + 2);
+
+      // Cleanup
+      removeTaskListener(id1);
+      removeTaskListener(id2);
+    });
   });
 
   describe('removeTaskListener', () => {
@@ -128,6 +148,19 @@ describe('SSE Event System', () => {
 
     it('should handle removing non-existent listener', () => {
       expect(() => removeTaskListener('non-existent-id')).not.toThrow();
+    });
+
+    it('should decrement total listener count on removal', () => {
+      const mockController = {
+        enqueue: () => {},
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id = addTaskListener(testTaskId, mockController);
+      const initialCount = getTotalListenerCount();
+
+      removeTaskListener(id);
+      expect(getTotalListenerCount()).toBe(initialCount - 1);
     });
   });
 
@@ -284,6 +317,108 @@ describe('SSE Event System', () => {
       // Cleanup
       removeTaskListener(id);
     });
+
+    it('should return count of listeners that received the event', () => {
+      const mockController = {
+        enqueue: () => {},
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id1 = addTaskListener(testTaskId, mockController);
+      const id2 = addTaskListener(testTaskId, mockController);
+
+      const count = broadcastTaskEvent(testTaskId, { type: 'test' });
+
+      expect(count).toBe(2);
+
+      // Cleanup
+      removeTaskListener(id1);
+      removeTaskListener(id2);
+    });
+
+    it('should return 0 when no listeners exist for task', () => {
+      const count = broadcastTaskEvent('non-existent-task', { type: 'test' });
+      expect(count).toBe(0);
+    });
+
+    it('should handle closed controller gracefully', () => {
+      let enqueueCalled = false;
+      const mockController = {
+        enqueue: () => {
+          enqueueCalled = true;
+          throw new Error('Controller closed');
+        },
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id = addTaskListener(testTaskId, mockController);
+
+      // Should not throw, should remove the failed listener
+      expect(() => {
+        broadcastTaskEvent(testTaskId, { type: 'test' });
+      }).not.toThrow();
+
+      // The listener should be removed after the error
+      expect(getListenerCount(testTaskId)).toBe(0);
+    });
+
+    it('should encode data as Uint8Array for streaming', () => {
+      let receivedType: string = '';
+      
+      const mockController = {
+        enqueue: (data: Uint8Array | string) => { 
+          // Verify it's a Uint8Array, not a plain string
+          if (data instanceof Uint8Array) {
+            const decoded = new TextDecoder().decode(data);
+            if (decoded.includes('test-event')) {
+              receivedType = 'Uint8Array';
+            }
+          } else if (typeof data === 'string' && data.includes('test-event')) {
+            receivedType = 'string';
+          }
+        },
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id = addTaskListener(testTaskId, mockController);
+      
+      broadcastTaskEvent(testTaskId, { type: 'test-event' });
+
+      // Data should be encoded as Uint8Array
+      expect(receivedType).toBe('Uint8Array');
+
+      // Cleanup
+      removeTaskListener(id);
+    });
+  });
+
+  describe('sendToListener', () => {
+    it('should send event to specific listener by ID', () => {
+      let receivedData = '';
+      
+      const mockController = {
+        enqueue: (data: Uint8Array | string) => { 
+          receivedData = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        },
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id = addTaskListener(testTaskId, mockController);
+
+      sendToListener(id, { type: 'custom', message: 'Hello' });
+
+      expect(receivedData).toContain('custom');
+      expect(receivedData).toContain('Hello');
+
+      // Cleanup
+      removeTaskListener(id);
+    });
+
+    it('should handle non-existent listener ID', () => {
+      expect(() => {
+        sendToListener('non-existent-id', { type: 'test' });
+      }).not.toThrow();
+    });
   });
 
   describe('getListenerCount', () => {
@@ -310,6 +445,30 @@ describe('SSE Event System', () => {
       removeTaskListener(id1);
       removeTaskListener(id2);
       removeTaskListener(id3);
+    });
+  });
+
+  describe('getTotalListenerCount', () => {
+    it('should return total count across all tasks', () => {
+      cleanupStaleListeners(0);
+      const initialCount = getTotalListenerCount();
+
+      const mockController = {
+        enqueue: () => {},
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const task1Id = `task-${crypto.randomUUID()}`;
+      const task2Id = `task-${crypto.randomUUID()}`;
+
+      addTaskListener(task1Id, mockController);
+      addTaskListener(task1Id, mockController);
+      addTaskListener(task2Id, mockController);
+
+      expect(getTotalListenerCount()).toBe(initialCount + 3);
+
+      // Cleanup
+      cleanupStaleListeners(0);
     });
   });
 
@@ -348,6 +507,23 @@ describe('SSE Event System', () => {
       
       // Clean up after test
       cleanupStaleListeners(0);
+    });
+
+    it('should return count of cleaned listeners', () => {
+      cleanupStaleListeners(0);
+
+      const mockController = {
+        enqueue: () => {},
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const uniqueTaskId = `task-${crypto.randomUUID()}`;
+      addTaskListener(uniqueTaskId, mockController);
+      addTaskListener(uniqueTaskId, mockController);
+      addTaskListener(uniqueTaskId, mockController);
+
+      const cleaned = cleanupStaleListeners(0);
+      expect(cleaned).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -411,6 +587,51 @@ describe('SSE Event System', () => {
 
       // Cleanup
       removeTaskListener(id);
+    });
+
+    it('should support multiple concurrent tasks', () => {
+      const task1Events: string[] = [];
+      const task2Events: string[] = [];
+      
+      const mockController1 = {
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          task1Events.push(str);
+        },
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const mockController2 = {
+        enqueue: (data: Uint8Array | string) => { 
+          const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+          task2Events.push(str);
+        },
+        close: () => {},
+      } as unknown as ReadableStreamDefaultController;
+
+      const id1 = addTaskListener('task-1', mockController1);
+      const id2 = addTaskListener('task-2', mockController2);
+
+      // Clear initial events
+      task1Events.length = 0;
+      task2Events.length = 0;
+
+      // Broadcast to both tasks
+      broadcastTaskEvent('task-1', { type: 'started' });
+      broadcastTaskEvent('task-2', { type: 'started' });
+
+      expect(task1Events).toHaveLength(1);
+      expect(task2Events).toHaveLength(1);
+
+      // Complete task 1 only
+      broadcastTaskEvent('task-1', { type: 'completed', status: 'SUCCESS' });
+
+      expect(task1Events).toHaveLength(2);
+      expect(task2Events).toHaveLength(1);
+
+      // Cleanup
+      removeTaskListener(id1);
+      removeTaskListener(id2);
     });
   });
 });
