@@ -11,7 +11,6 @@
 5. Task lifecycle tracking (pending → processing → success/failed)
 6. Task-based generated files with multiple output formats
 7. Download mechanisms (ZIP, individual files, public links)
-8. Vite plugin for build-time type fetching
 
 ## Tech Stack
 
@@ -25,6 +24,7 @@
 | Container | Docker |
 | Testing | Bun test, Playwright (E2E) |
 | CI/CD | GitHub Actions |
+| Logger | Pino |
 
 ## Supported Spec Versions
 
@@ -39,64 +39,80 @@
 
 ```
 src/
-├── app/                    # Next.js App Router pages
-│   ├── actions/           # Server actions (project, token, tasks)
-│   ├── api/               # API routes
-│   │   ├── tasks/        # SSE events, download
-│   │   ├── files/        # File downloads
-│   │   ├── public/       # Public download links
-│   │   └── auth/         # Authentication
-│   └── projects/          # Project management pages
-├── components/             # React components
-│   ├── project/          # ProjectForm, ProjectList
-│   ├── token/            # TokenManager
-│   └── task/             # TaskProgress (SSE-powered)
-├── lib/                   # Core business logic
+├── app/
+│   ├── actions/           # Server actions
+│   │   ├── project.ts    # Project CRUD
+│   │   ├── token.ts     # Token management
+│   │   └── tasks.ts      # Task operations
+│   ├── api/              # API routes
+│   │   ├── tasks/
+│   │   │   ├── process/route.ts    # Task processor
+│   │   │   └── [id]/
+│   │   │       ├── events/route.ts  # SSE endpoint
+│   │   │       └── download/route.ts
+│   │   ├── files/[...path]/route.ts
+│   │   └── public/[token]/route.ts
+│   ├── projects/         # Project pages
+│   ├── login/page.tsx
+│   └── page.tsx
+├── components/
+│   ├── project/          # Project components
+│   │   ├── ProjectForm.tsx
+│   │   ├── ProjectList.tsx
+│   │   └── ProjectSettings.tsx
+│   ├── task/
+│   │   └── TaskProgress.tsx  # SSE-powered
+│   ├── token/
+│   │   └── TokenManager.tsx
+│   └── ui/               # shadcn/ui components
+├── lib/
 │   ├── auth.ts           # Token generation/validation
-│   ├── db/               # Database schema & connection
-│   ├── generator.ts      # OpenAPI type generator
-│   └── tasks.ts          # Task lifecycle management
-└── middleware.ts          # Bearer token authentication
+│   ├── db/
+│   │   ├── index.ts     # Database connection
+│   │   └── schema.ts    # Drizzle schema
+│   ├── env.ts           # Environment validation
+│   ├── events.ts        # SSE pub/sub
+│   ├── generator.ts     # Type generator
+│   ├── logger.ts        # Pino logger
+│   ├── tasks.ts         # Task operations
+│   └── utils.ts
+└── middleware.ts         # Bearer token auth
 
-packages/
-└── vite-plugin-openapi-partner/  # Vite plugin for type fetching
+__tests__/                # Unit tests (bun test)
+e2e/                      # E2E tests (Playwright)
 ```
 
 ## Database Schema
 
 ### Projects
-- `id` (PK), `name`, `specUrl`, `specType`, `specVersion`
-- `wasConvertedFromSwagger2`, `outputPath`, `apiVersion`, `baseUrl`
-- `isActive`, `createdAt`, `updatedAt`
+- `id` (PK), `name`, `specUrl`, `specType` (auto-detect/openapi3x/swagger2x)
+- `specVersion`, `wasConvertedFromSwagger2`, `outputPath`
+- `apiVersion`, `baseUrl`, `customTemplates`, `clientOptions`
+- `isActive`, `createdBy`, `createdAt`, `updatedAt`
 
 ### Tokens
 - `id` (PK), `projectId` (FK), `name`, `tokenHash`
 - `permissions` (JSON: read/write/admin), `expiresAt`
-- `isActive`, `lastUsedAt`, `createdAt`
+- `lastUsedAt`, `createdAt`
 
 ### Tasks
 - `id` (PK, UUID), `projectId` (FK), `status` (PENDING/PROCESSING/SUCCESS/FAILED)
 - `errorMessage`, `executionLog`, `startedAt`, `completedAt`, `createdAt`
 - `outputDir`, `outputFiles`, `outputSize`, `downloadCount`, `publicToken`
 
-### Users
-- `id` (PK), `username`, `passwordHash`, `role`
-- `createdAt`, `updatedAt`
+### Users (Schema only)
+- `id`, `username`, `passwordHash`, `role`, `createdAt`, `updatedAt`
 
-### Sessions
-- `id` (PK), `userId` (FK), `expiresAt`, `createdAt`
+### Sessions (Schema only)
+- `id`, `userId` (FK), `expiresAt`, `createdAt`
 
-### Configs
-- `id` (PK), `key`, `value`, `type`, `environment`
-- `description`, `validation`, `createdAt`, `updatedAt`, `deletedAt`
-
-### ConfigHistory
-- `id` (PK), `configId` (FK), `oldValue`, `newValue`
-- `changedBy` (FK), `changedAt`, `changeReason`
+### Configs (Schema only)
+- `id`, `key`, `value`, `type`, `environment`, `description`
+- `validation`, `createdBy`, `updatedBy`, `createdAt`, `updatedAt`, `deletedAt`
 
 ## Agent Guidelines
 
-### 1. TDD Enforcement (Constitution §3)
+### 1. TDD Enforcement
 Every implementation MUST follow:
 1. **RED**: Write failing test first
 2. **GREEN**: Write minimal code to pass
@@ -106,11 +122,12 @@ Every implementation MUST follow:
 - Use **bun test** for unit tests
 - Use **Playwright** for E2E tests
 - Test naming: `describe > it` pattern
+- Run `bun test` before commits
 
 ### 3. Code Quality
-- Run `bun test` before commits
 - Run `tsc --noEmit` for type checking
 - No `node_modules/` in git
+- Log important actions with logger
 
 ### 4. Commit Convention
 ```
@@ -120,10 +137,11 @@ Types: feat, fix, test, chore, refactor, docs, style, perf, ci, build, revert
 Scope: auth, db, api, ui, generator, etc.
 ```
 
-### 5. Security (Constitution §6)
+### 5. Security
 - All tokens hashed with SHA-256
 - Middleware validates Bearer tokens
 - Permission-based access (read/write/admin)
+- SSE endpoints public (UI session auth)
 - Public download tokens use UUID
 
 ## Key Commands
@@ -134,6 +152,7 @@ bun install
 
 # Run unit tests
 bun test
+bun test __tests__ src/lib
 
 # Run E2E tests
 bun playwright test
@@ -152,7 +171,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## File Naming Convention (Constitution)
+## File Naming Convention
 
 | Type | Convention | Example |
 |------|------------|---------|
@@ -166,20 +185,11 @@ git push origin v0.1.0
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/tasks/[id]/events` | Token | SSE task stream |
+| GET | `/api/tasks/[id]/events` | None | SSE task stream (public) |
 | GET | `/api/tasks/[id]/download` | Token | Download as ZIP |
 | GET | `/api/files/[taskId]/[file]` | Token | Download single file |
-| GET | `/api/public/[token]` | None | Public download (no auth) |
-| POST | Server Actions | - | CRUD operations |
-
-## Development Workflow
-
-1. Read project documentation
-2. Create test in `__tests__/` or `*.test.ts`
-3. Implement in `src/lib/` or `src/app/`
-4. Run `bun test` to verify
-5. Commit with conventional message
-6. Push to trigger CI/CD pipeline
+| GET | `/api/public/[token]` | None | Public download |
+| POST | `/api/tasks/process` | - | Process tasks (internal) |
 
 ## CI/CD Pipeline
 
@@ -192,48 +202,13 @@ git push origin v0.1.0
 | **release.yml** | git tags `v*` | Docker build, GitHub release |
 | **dependabot.yml** | weekly | Auto-update dependencies |
 
-### CI Pipeline
+### Pipeline Flow
 
 ```
 ┌─────────┐     ┌─────────┐     ┌─────────┐
 │  Lint   │ ──▶ │  Test   │ ──▶ │  Build  │
 │ (tsc)   │     │ (bun)   │     │ (next)  │
 └─────────┘     └─────────┘     └─────────┘
-```
-
-### Release Pipeline
-
-```
-┌─────────────┐     ┌─────────────┐
-│ Push tag v* │ ──▶ │ Docker Build │ ──▶ GHCR Image
-└─────────────┘     └─────────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                   │ GitHub Release   │
-                   └─────────────────┘
-```
-
-### Local Hooks
-
-| Hook | Purpose |
-|------|---------|
-| **pre-commit** | Runs lint-staged on staged files (tsc + tests) |
-| **commit-msg** | Validates conventional commit format |
-
-## Workflow Files
-
-```
-.github/
-├── dependabot.yml          # Dependency updates (weekly)
-└── workflows/
-    ├── ci.yml              # Lint → Test → Build
-    ├── e2e.yml             # Playwright E2E tests
-    └── release.yml          # Docker + Release on tags
-
-.husky/
-├── pre-commit            # Run lint-staged
-└── commit-msg           # Validate commit format
 ```
 
 ## Skills
@@ -244,12 +219,17 @@ git push origin v0.1.0
 | `fuxi` | Design & planning |
 | `qiaochui` | Task decomposition |
 | `gaoyao` | Quality audit |
+| `brainstorming` | Explore intent & design |
 
-## Constitution Compliance
+## Logger
 
-All agents MUST follow `.specify/memory/constitution.md`:
-- TypeScript safety practices
-- Zero-cost abstractions
-- TDD cycle enforcement
-- English documentation
-- Public API documentation
+Use `logger.ts` for structured logging:
+
+```typescript
+import { logger } from '@/lib/logger';
+
+logger.info('Task completed', { taskId, projectId });
+logger.error('Failed to process', { error: err.message });
+```
+
+Logs output to `./logs/app.log` and `./logs/error.log`.
