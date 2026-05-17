@@ -29,10 +29,15 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 
+      - name: Setup database
+        run: |
+          mkdir -p data
+          bun run db:push
+
       - name: Start dev server
         run: bun --bun run dev &
         env:
-          DATABASE_URL: file:./data/test.db
+          DATABASE_URL: file:./data/config.db
 
       - name: Wait for server
         run: sleep 10
