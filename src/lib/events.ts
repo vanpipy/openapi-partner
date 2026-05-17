@@ -116,7 +116,7 @@ export async function getAndClearStoredEvents(taskId: string): Promise<Record<st
  * Also stores event in database for late-connecting clients
  * Returns the number of listeners the event was sent to
  */
-export async function broadcastTaskEvent(
+export function broadcastTaskEvent(
   taskId: string,
   event: {
     type: string;
@@ -125,8 +125,10 @@ export async function broadcastTaskEvent(
     executionLog?: string;
     errorMessage?: string;
     progress?: number;
+    outputPath?: string;
+    outputSize?: number;
   }
-): Promise<number> {
+): number {
   const payload = JSON.stringify({
     ...event,
     taskId,
@@ -148,8 +150,11 @@ export async function broadcastTaskEvent(
     }
   }
   
-  // Store event in database for late-connecting clients
-  await storeEventInDb(taskId, { ...event, taskId });
+  // Fire-and-forget: store event in database for late-connecting clients
+  // This is async and should not block the SSE broadcast
+  storeEventInDb(taskId, { ...event, taskId }).catch((e) => {
+    console.error('Failed to store SSE event in DB:', e);
+  });
   
   return sentCount;
 }

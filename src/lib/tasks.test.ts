@@ -20,6 +20,16 @@ import {
 import { getDb } from './db';
 import { projects, tasks } from './db/schema';
 
+// Helper to narrow union type after success check
+function assertSuccess<T>(result: { success: true } | { success: false; error: string }): asserts result is { success: true } {
+  expect(result.success).toBe(true);
+}
+
+// Helper to narrow union type after failure check
+function assertFailure<T>(result: { success: true } | { success: false; error: string }): asserts result is { success: false; error: string } {
+  expect(result.success).toBe(false);
+}
+
 describe('Task Creation', () => {
   let db: ReturnType<typeof getDb>;
   let testProjectId: number;
@@ -50,7 +60,7 @@ describe('Task Creation', () => {
   it('should create a task with pending status', async () => {
     const result = await createTask({ projectId: testProjectId });
 
-    expect(result.success).toBe(true);
+    assertSuccess(result);
     expect(result.task.status).toBe(TaskStatus.PENDING);
     expect(result.task.id).toBeDefined();
     expect(result.task.projectId).toBe(testProjectId);
@@ -62,7 +72,7 @@ describe('Task Creation', () => {
   it('should fail when project does not exist', async () => {
     const result = await createTask({ projectId: 99999 });
 
-    expect(result.success).toBe(false);
+    assertFailure(result);
     expect(result.error).toBe('Project not found');
   });
 });
@@ -108,7 +118,7 @@ describe('Task Status Updates', () => {
   it('should start a pending task', async () => {
     const result = await startTask(testTaskId);
 
-    expect(result.success).toBe(true);
+    assertSuccess(result);
     expect(result.task.status).toBe(TaskStatus.PROCESSING);
     expect(result.task.startedAt).toBeInstanceOf(Date);
   });
@@ -116,7 +126,7 @@ describe('Task Status Updates', () => {
   it('should complete a processing task', async () => {
     const result = await completeTask(testTaskId, 'Generation completed successfully');
 
-    expect(result.success).toBe(true);
+    assertSuccess(result);
     expect(result.task.status).toBe(TaskStatus.SUCCESS);
     expect(result.task.completedAt).toBeInstanceOf(Date);
     expect(result.task.executionLog).toContain('Generation completed successfully');
@@ -135,7 +145,7 @@ describe('Task Status Updates', () => {
 
     const result = await failTask(task.id, 'Network timeout');
 
-    expect(result.success).toBe(true);
+    assertSuccess(result);
     expect(result.task.status).toBe(TaskStatus.FAILED);
     expect(result.task.errorMessage).toBe('Network timeout');
     expect(result.task.completedAt).toBeInstanceOf(Date);
@@ -197,8 +207,8 @@ describe('Task Queries', () => {
     const latest = await getLatestTask(testProjectId);
     expect(latest).not.toBeNull();
     // The latest task should be one of the statuses we created
-    const validStatuses = [TaskStatus.PENDING, TaskStatus.SUCCESS, TaskStatus.FAILED];
-    expect(validStatuses).toContain(latest?.status);
+    const validStatuses: TaskStatus[] = [TaskStatus.PENDING, TaskStatus.SUCCESS, TaskStatus.FAILED];
+    expect(validStatuses).toContain(latest!.status);
   });
 
   it('should count tasks by status', async () => {
@@ -222,9 +232,15 @@ describe('Task Events', () => {
       startedAt: new Date(),
       completedAt: null,
       createdAt: new Date(),
-    };
+      outputDir: null,
+      outputFiles: null,
+      outputSize: null,
+      downloadCount: null,
+      publicToken: null,
+      sseEvents: null,
+    } as const;
 
-    const event = createTaskEvent('started', task, { message: 'Task started' });
+    const event = createTaskEvent('started', task as any, { message: 'Task started' });
 
     expect(event.type).toBe('started');
     expect(event.taskId).toBe('test-task-123');
@@ -243,9 +259,15 @@ describe('Task Events', () => {
       startedAt: new Date(),
       completedAt: new Date(),
       createdAt: new Date(),
-    };
+      outputDir: null,
+      outputFiles: null,
+      outputSize: null,
+      downloadCount: null,
+      publicToken: null,
+      sseEvents: null,
+    } as const;
 
-    const event = createTaskEvent('completed', task);
+    const event = createTaskEvent('completed', task as any);
 
     expect(event.type).toBe('completed');
     expect(event.data?.executionLog).toContain('Step 1 done');

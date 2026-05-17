@@ -10,6 +10,11 @@ import { projects, tasks } from '@/lib/db/schema';
 import { TaskStatus } from '@/lib/db';
 import { createTask } from '@/lib/tasks';
 
+// Helper to narrow union type after success check
+function assertSuccess<T>(result: { success: true } | { success: false; error: string }): asserts result is { success: true } {
+  expect(result.success).toBe(true);
+}
+
 describe('Project Operations', () => {
   let db: ReturnType<typeof getDb>;
 
@@ -128,7 +133,7 @@ describe('Project Operations', () => {
       // Simulate sync task creation
       const taskResult = await createTask({ projectId: project.id });
 
-      expect(taskResult.success).toBe(true);
+      assertSuccess(taskResult);
       expect(taskResult.task.projectId).toBe(project.id);
       expect(taskResult.task.status).toBe(TaskStatus.PENDING);
     });

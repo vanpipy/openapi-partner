@@ -18,6 +18,16 @@ import {
   Permission,
 } from './auth';
 import { getDb } from './db';
+
+// Helper to narrow union type after success check
+function assertSuccess<T>(result: { success: true } | { success: false; error: string }): asserts result is { success: true } {
+  expect(result.success).toBe(true);
+}
+
+// Helper to narrow union type after failure check
+function assertFailure<T>(result: { success: true } | { success: false; error: string }): asserts result is { success: false; error: string } {
+  expect(result.success).toBe(false);
+}
 import { projects, tokens } from './db/schema';
 
 describe('Token Generation', () => {
@@ -142,7 +152,7 @@ describe('Token Management', () => {
       permissions: ['read', 'write'],
     });
 
-    expect(result.success).toBe(true);
+    assertSuccess(result);
     expect(result.token).toHaveLength(32);
     expect(result.tokenRecord.name).toBe('Test Token');
   });
@@ -158,14 +168,14 @@ describe('Token Management', () => {
 
     const validateResult = await validateToken(createResult.token);
 
-    expect(validateResult.success).toBe(true);
+    assertSuccess(validateResult);
     expect(validateResult.token.name).toBe('Validate Test');
     expect(validateResult.project.id).toBe(testProjectId);
   });
 
   it('should reject invalid token', async () => {
     const result = await validateToken('invalid-token-123');
-    expect(result.success).toBe(false);
+    assertFailure(result);
     expect(result.error).toBe('Invalid token');
   });
 
@@ -179,7 +189,7 @@ describe('Token Management', () => {
     if (!result.success) throw new Error('Failed to create token');
 
     const validateResult = await validateToken(result.token);
-    expect(validateResult.success).toBe(false);
+    assertFailure(validateResult);
     expect(validateResult.error).toBe('Token expired');
   });
 
