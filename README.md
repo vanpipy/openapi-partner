@@ -41,8 +41,8 @@
 # Install dependencies
 bun install
 
-# Run database migrations
-bunx drizzle-kit migrate
+# Database setup (first time only)
+bun run drizzle:migrate
 
 # Start development server
 bun --bun run dev
@@ -176,10 +176,10 @@ curl /api/public/{publicToken} -o types.zip
 ## Testing
 
 ```bash
-bun test              # All tests
-bun test __tests__     # Unit tests only
-bun playwright test    # E2E tests
-bunx tsc --noEmit     # Type check
+bun test                    # All tests
+bun test __tests__ src/lib  # Unit tests only
+bun playwright test        # E2E tests
+bunx tsc --noEmit          # Type check
 ```
 
 ## Environment Variables

@@ -150,6 +150,11 @@ Scope: auth, db, api, ui, generator, etc.
 # Install dependencies
 bun install
 
+# Database (Drizzle)
+bun run drizzle:generate   # Generate migrations from schema changes
+bun run drizzle:migrate    # Apply migrations to create/update database
+bun run drizzle:studio    # Open interactive database studio
+
 # Run unit tests
 bun test
 bun test __tests__ src/lib
@@ -160,7 +165,7 @@ bun playwright test
 # Type check
 bunx tsc --noEmit
 
-# Start dev server
+# Start dev server (run drizzle:migrate first if database doesn't exist)
 bun --bun run dev
 
 # Docker build
