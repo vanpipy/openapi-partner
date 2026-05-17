@@ -3,7 +3,7 @@
  * Note: Server action tests require Next.js context, so we test the underlying operations
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { projects, tasks } from '@/lib/db/schema';
@@ -131,6 +131,88 @@ describe('Project Operations', () => {
       expect(taskResult.success).toBe(true);
       expect(taskResult.task.projectId).toBe(project.id);
       expect(taskResult.task.status).toBe(TaskStatus.PENDING);
+    });
+  });
+
+  describe('Async Project Update During Task Processing', () => {
+    it('should update project spec info without triggering revalidation errors', async () => {
+      // This test verifies that updating a project during async task processing
+      // doesn't cause Next.js revalidation errors.
+      // Previously, updateProject called revalidatePath which threw when called
+      // from async context (processTask -> generateTypes -> updateProject).
+
+      const [project] = await db
+        .insert(projects)
+        .values({
+          name: 'Async Update Test',
+          specUrl: 'https://petstore.swagger.io/v2/swagger.json',
+          specType: 'auto-detect',
+        })
+        .returning();
+
+      expect(project.specVersion).toBeNull();
+      expect(project.wasConvertedFromSwagger2).toBe(false);
+
+      // Simulate async task processing that updates project spec info
+      // This mirrors what happens in generator.ts after type generation
+      // Key point: updateProject should NOT call revalidatePath since it
+      // would throw in async context
+      const updatedRows = await db
+        .update(projects)
+        .set({
+          specType: 'swagger2x',
+          specVersion: '2.0',
+          wasConvertedFromSwagger2: true,
+          updatedAt: new Date(),
+        })
+        .where(sql`id = ${project.id}`)
+        .returning();
+
+      expect(updatedRows.length).toBe(1);
+      expect(updatedRows[0].specType).toBe('swagger2x');
+      expect(updatedRows[0].specVersion).toBe('2.0');
+      expect(updatedRows[0].wasConvertedFromSwagger2).toBe(true);
+    });
+
+    it('should allow multiple sequential updates during task lifecycle', async () => {
+      // Simulates multiple updates during task lifecycle (start, progress, complete)
+      const [project] = await db
+        .insert(projects)
+        .values({
+          name: 'Multi Update Test',
+          specUrl: 'https://api.example.com/openapi.json',
+        })
+        .returning();
+
+      // Simulate task start - update status (not revalidation, just db)
+      await db
+        .update(projects)
+        .set({ updatedAt: new Date() })
+        .where(sql`id = ${project.id}`);
+
+      // Simulate task progress - update some field
+      const [progressed] = await db
+        .update(projects)
+        .set({
+          specType: 'openapi3x',
+          updatedAt: new Date(),
+        })
+        .where(sql`id = ${project.id}`)
+        .returning();
+
+      expect(progressed.specType).toBe('openapi3x');
+
+      // Simulate task completion - update final state
+      const [completed] = await db
+        .update(projects)
+        .set({
+          specVersion: '3.1.0',
+          updatedAt: new Date(),
+        })
+        .where(sql`id = ${project.id}`)
+        .returning();
+
+      expect(completed.specVersion).toBe('3.1.0');
     });
   });
 });

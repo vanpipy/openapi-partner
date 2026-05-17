@@ -318,7 +318,7 @@ describe('SSE Event System', () => {
       removeTaskListener(id);
     });
 
-    it('should return count of listeners that received the event', () => {
+    it('should return count of listeners that received the event', async () => {
       const mockController = {
         enqueue: () => {},
         close: () => {},
@@ -327,7 +327,7 @@ describe('SSE Event System', () => {
       const id1 = addTaskListener(testTaskId, mockController);
       const id2 = addTaskListener(testTaskId, mockController);
 
-      const count = broadcastTaskEvent(testTaskId, { type: 'test' });
+      const count = await broadcastTaskEvent(testTaskId, { type: 'test' });
 
       expect(count).toBe(2);
 
@@ -336,8 +336,8 @@ describe('SSE Event System', () => {
       removeTaskListener(id2);
     });
 
-    it('should return 0 when no listeners exist for task', () => {
-      const count = broadcastTaskEvent('non-existent-task', { type: 'test' });
+    it('should return 0 when no listeners exist for task', async () => {
+      const count = await broadcastTaskEvent('non-existent-task', { type: 'test' });
       expect(count).toBe(0);
     });
 
