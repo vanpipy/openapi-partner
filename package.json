@@ -10,9 +10,10 @@
     "test:unit": "bun test __tests__ src/lib",
     "test:e2e": "bun playwright test",
     "typecheck": "bunx tsc --noEmit",
-    "drizzle:generate": "drizzle-kit generate",
-    "drizzle:migrate": "drizzle-kit migrate",
-    "drizzle:studio": "drizzle-kit studio",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
     "prepare": "husky"
   },
   "dependencies": {
