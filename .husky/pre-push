@@ -5,7 +5,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Running unit tests..."
-bun test __tests__
+bun test __tests__ src/lib
 if [ $? -ne 0 ]; then
     echo "Unit tests failed!"
     exit 1

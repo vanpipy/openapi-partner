@@ -11,14 +11,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  typecheck:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: rm -f bun.lock && bun install
-      - run: bunx tsc --noEmit
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
 
   test:
     name: Unit Tests
@@ -26,5 +26,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: rm -f bun.lock && bun install
-      - run: bun test
+      - run: bun install --frozen-lockfile
+      - run: bun run test:unit
