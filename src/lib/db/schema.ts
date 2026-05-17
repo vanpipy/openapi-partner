@@ -32,6 +32,49 @@ export const SpecType = {
 export type SpecType = (typeof SpecType)[keyof typeof SpecType];
 
 // ============================================
+// Generator Options (swagger-typescript-api)
+// ============================================
+
+export interface GeneratorOptions {
+  /** Generate separated files for http client, data contracts, and routes */
+  modular?: boolean;
+  /** Skip API client class - types only */
+  typesOnly?: boolean;
+  /** Generate type definitions for API routes */
+  routeTypes?: boolean;
+  /** Extract enums to TypeScript enums */
+  extractEnums?: boolean;
+  /** Extract all responses described in /components/responses */
+  extractResponses?: boolean;
+  /** Extract request body type to data contract */
+  extractRequestBody?: boolean;
+  /** Extract request params to data contract */
+  extractRequestParams?: boolean;
+  /** Extract response error type to data contract */
+  extractResponseError?: boolean;
+  /** Generate readonly properties */
+  readonly?: boolean;
+  /** Generate all enum types as union types (T1 | T2 | TN) */
+  unionEnums?: boolean;
+  /** Sort fields and types */
+  sortTypes?: boolean;
+  /** Sort routes in alphabetical order */
+  sortRoutes?: boolean;
+}
+
+export const DEFAULT_GENERATOR_OPTIONS: GeneratorOptions = {
+  modular: true,
+  typesOnly: true,
+  routeTypes: true,
+  extractEnums: true,
+  extractResponses: true,
+  extractRequestBody: true,
+  extractRequestParams: true,
+  sortTypes: true,
+  sortRoutes: true,
+};
+
+// ============================================
 // Projects Table (Core Configuration)
 // ============================================
 
@@ -48,7 +91,7 @@ export const projects = sqliteTable('projects', {
   apiVersion: text('api_version'),
   baseUrl: text('base_url'),
   customTemplates: text('custom_templates'),
-  clientOptions: text('client_options'),
+  generatorOptions: text('generator_options'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdBy: text('created_by'),
   createdAt: integer('created_at', { mode: 'timestamp' })
@@ -123,6 +166,8 @@ export const tasks = sqliteTable(
     outputSize: integer('output_size'), // Total size in bytes
     downloadCount: integer('download_count').default(0),
     publicToken: text('public_token'), // UUID for public download (optional)
+    // Pending SSE events for new clients to receive on connect
+    sseEvents: text('sse_events').default('[]'), // JSON array of events
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),

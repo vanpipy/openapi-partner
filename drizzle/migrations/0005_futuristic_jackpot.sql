@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `sse_events` text DEFAULT '[]';
