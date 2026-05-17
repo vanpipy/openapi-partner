@@ -140,18 +140,31 @@ curl -H "Authorization: Bearer $TOKEN" \
 curl /api/public/{publicToken} -o types.zip
 ```
 
-## Generated Files
+## Generated Files (Modular)
 
 ```
 ./generated/
 └── tasks/
     └── {task-id}/
         ├── manifest.json
-        ├── api.ts
-        ├── data-contracts.ts
-        ├── http-client.ts
-        └── route-types.ts
+        ├── data-contracts.ts   # Type definitions for API requests/responses
+        ├── routes.ts           # Route type definitions
+        └── http-client.ts      # HTTP client (if modular mode enabled)
 ```
+
+### Generator Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `modular` | `true` | Separate files for data contracts, routes, http-client |
+| `typesOnly` | `true` | Skip API client class - types only |
+| `routeTypes` | `true` | Generate route type definitions |
+| `extractEnums` | `true` | Extract enums to TypeScript enums |
+| `extractResponses` | `true` | Extract response types |
+| `extractRequestBody` | `true` | Extract request body types |
+| `extractRequestParams` | `true` | Extract request params types |
+| `sortTypes` | `true` | Sort fields and types |
+| `sortRoutes` | `true` | Sort routes alphabetically |
 
 ## API Endpoints
 
