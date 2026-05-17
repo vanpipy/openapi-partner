@@ -7,7 +7,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { eq, desc } from 'drizzle-orm';
-import { getDb, projects, type Project, type NewProject, SpecType } from '@/lib/db';
+import { getDb, projects, type Project, type NewProject, SpecType, type GeneratorOptions, DEFAULT_GENERATOR_OPTIONS } from '@/lib/db';
 import { createTask } from '@/lib/tasks';
 import { listTokens } from '@/lib/auth';
 import { createLogger } from '@/lib/logger';
@@ -46,7 +46,7 @@ export interface CreateProjectInput {
   apiVersion?: string;
   baseUrl?: string;
   customTemplates?: string;
-  clientOptions?: string;
+  generatorOptions?: GeneratorOptions;
   createdBy?: string;
 }
 
@@ -59,7 +59,7 @@ export interface UpdateProjectInput {
   apiVersion?: string;
   baseUrl?: string;
   customTemplates?: string;
-  clientOptions?: string;
+  generatorOptions?: GeneratorOptions;
   isActive?: boolean;
 }
 
@@ -85,7 +85,7 @@ export async function createProject(input: CreateProjectInput): Promise<{
         apiVersion: input.apiVersion ?? null,
         baseUrl: input.baseUrl ?? null,
         customTemplates: input.customTemplates ?? null,
-        clientOptions: input.clientOptions ?? null,
+        generatorOptions: input.generatorOptions ? JSON.stringify(input.generatorOptions) : JSON.stringify(DEFAULT_GENERATOR_OPTIONS),
         createdBy: input.createdBy ?? null,
       })
       .returning();
@@ -113,6 +113,7 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
   success: false;
   error: string;
 }> {
+  safeLog('debug', 'updateProject called', { projectId: input.id, updates: Object.keys(input).filter(k => k !== 'id') });
   try {
     const db = getDb();
 
@@ -127,7 +128,7 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
     if (input.apiVersion !== undefined) updateData.apiVersion = input.apiVersion;
     if (input.baseUrl !== undefined) updateData.baseUrl = input.baseUrl;
     if (input.customTemplates !== undefined) updateData.customTemplates = input.customTemplates;
-    if (input.clientOptions !== undefined) updateData.clientOptions = input.clientOptions;
+    if (input.generatorOptions !== undefined) updateData.generatorOptions = JSON.stringify(input.generatorOptions);
     if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
     const [project] = await db
@@ -141,7 +142,6 @@ export async function updateProject(input: UpdateProjectInput): Promise<{
     }
 
     safeLog('info', 'Project updated', { projectId: project.id });
-    revalidatePath('/projects');
 
     return { success: true, project };
   } catch (error) {
@@ -202,21 +202,26 @@ export async function listProjects(options?: {
   limit?: number;
   isActive?: boolean;
 }): Promise<Project[]> {
-  const db = getDb();
+  try {
+    const db = getDb();
 
-  let query = db.select().from(projects);
+    let query = db.select().from(projects);
 
-  if (options?.isActive !== undefined) {
-    query = query.where(eq(projects.isActive, options.isActive)) as typeof query;
+    if (options?.isActive !== undefined) {
+      query = query.where(eq(projects.isActive, options.isActive)) as typeof query;
+    }
+
+    query = query.orderBy(desc(projects.createdAt)) as typeof query;
+
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+
+    return query.all();
+  } catch (error) {
+    safeLog('error', 'Failed to list projects', { err: error });
+    throw error;
   }
-
-  query = query.orderBy(desc(projects.createdAt)) as typeof query;
-
-  if (options?.limit) {
-    query = query.limit(options.limit) as typeof query;
-  }
-
-  return query.all();
 }
 
 // ============================================
@@ -331,7 +336,7 @@ export async function triggerProjectSync(
 async function broadcastEvent(taskId: string, type: string, data?: Record<string, unknown>) {
   try {
     const { broadcastTaskEvent, getListenerCount, getTotalListenerCount } = await import('@/lib/events');
-    const count = broadcastTaskEvent(taskId, { type, ...data });
+    const count = await broadcastTaskEvent(taskId, { type, ...data });
     const taskListeners = getListenerCount(taskId);
     const totalListeners = getTotalListenerCount();
     safeLog('debug', `SSE broadcast ${type} sent to ${count}/${taskListeners} task listeners (${totalListeners} total)`, { taskId, count, taskListeners, totalListeners });
@@ -349,7 +354,9 @@ async function processTask(taskId: string, projectId: number) {
   try {
     // Start the task
     const { startTask, failTask, appendTaskLog } = await import('@/lib/tasks');
+    safeLog('debug', 'Calling startTask', { taskId, projectId });
     const startResult = await startTask(taskId);
+    safeLog('debug', 'startTask result', { taskId, projectId, success: startResult.success });
 
     if (!startResult.success) {
       safeLog('error', 'Failed to start task', { taskId, projectId, error: startResult.error });

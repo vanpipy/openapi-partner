@@ -1,23 +1,23 @@
 /**
  * OpenAPI Type Generator
  * Handles async type generation with SSE progress updates
- * Supports OpenAPI 3.x and Swagger 2.0 with auto-detection
+ * Uses swagger-typescript-api for modular TypeScript type generation
  * 
  * Generated files are stored in task-specific directories:
  *   {outputPath}/tasks/{taskId}/
  *     ├── manifest.json
- *     ├── api.ts
  *     ├── data-contracts.ts
- *     └── ...
+ *     ├── routes.ts (or route-types.ts)
+ *     └── http-client.ts (if modular mode)
  */
 
 import { spawn } from 'child_process';
-import { createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { getProject, updateProject } from '@/app/actions/project';
 import { startProjectTask, completeProjectTask, failProjectTask, addProjectTaskLog } from '@/app/actions/tasks';
-import { SpecType } from './db/schema';
+import { SpecType, type GeneratorOptions, DEFAULT_GENERATOR_OPTIONS } from './db/schema';
 import { getDb } from './db';
 import { eq } from 'drizzle-orm';
 import { tasks, projects } from './db/schema';
@@ -39,48 +39,11 @@ interface GeneratedFile {
   size: number;
 }
 
-interface GenerationResult {
-  success: boolean;
-  outputPath?: string;
-  outputFiles?: GeneratedFile[];
-  outputSize?: number;
-  error?: string;
-}
+// ============================================
+// Public API
+// ============================================
 
-/**
- * Recursively collect all generated files in a directory
- */
-function collectGeneratedFiles(dir: string): GeneratedFile[] {
-  const files: GeneratedFile[] = [];
-  
-  if (!existsSync(dir)) return files;
-  
-  const entries = readdirSync(dir, { withFileTypes: true });
-  
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectGeneratedFiles(fullPath));
-    } else if (entry.isFile()) {
-      const stats = statSync(fullPath);
-      // Skip manifest during collection, add it separately
-      if (entry.name !== 'manifest.json') {
-        files.push({
-          name: entry.name,
-          path: fullPath,
-          size: stats.size,
-        });
-      }
-    }
-  }
-  
-  return files;
-}
-
-/**
- * Generator options
- */
-export interface GeneratorOptions {
+export interface GenerateOptions {
   projectId: number;
   taskId: string;
   onProgress?: (message: string) => void;
@@ -89,9 +52,9 @@ export interface GeneratorOptions {
 }
 
 /**
- * Generate TypeScript types from Swagger/OpenAPI spec
+ * Generate TypeScript types from OpenAPI/Swagger spec
  */
-export async function generateTypes(options: GeneratorOptions): Promise<{
+export async function generateTypes(options: GenerateOptions): Promise<{
   success: boolean;
   outputPath?: string;
   outputFiles?: GeneratedFile[];
@@ -116,21 +79,21 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     // Mark task as processing
     await startProjectTask(taskId, projectId);
     logger.info({ taskId, projectId }, 'Task marked as processing');
-    
+
     await addProjectTaskLog(taskId, projectId, `Starting type generation for: ${project.name}`);
     onProgress?.(`Fetching OpenAPI spec from: ${project.specUrl}`);
     logger.debug({ taskId, specUrl: project.specUrl }, 'Fetching spec');
 
+    // Parse generator options from project
+    const generatorOptions = parseGeneratorOptions(project.generatorOptions);
+
     // Create task-specific output directory
     const baseOutputDir = project.outputPath || './generated';
     const taskOutputDir = join(baseOutputDir, 'tasks', taskId);
-    
+
     if (!existsSync(taskOutputDir)) {
       mkdirSync(taskOutputDir, { recursive: true });
     }
-
-    // Generate output file path
-    const outputFile = join(taskOutputDir, 'api.ts');
 
     // Detect spec version if auto-detect is enabled
     let specInfo: SpecInfo = {
@@ -145,14 +108,12 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
       onProgress?.(`Detected: ${specInfo.wasConverted ? 'Swagger 2.0 (will convert)' : 'OpenAPI ' + specInfo.specVersion}`);
     }
 
-    // Call swagger-typescript-api
-    // Note: In production, you'd install swagger-typescript-api as a dependency
-    const result = await runSwaggerGenerator({
+    // Run swagger-typescript-api
+    const result = await runSwaggerTypescriptApi({
       specUrl: project.specUrl,
-      outputFile,
-      apiVersion: project.apiVersion || undefined,
+      outputDir: taskOutputDir,
       baseUrl: project.baseUrl || undefined,
-      specType: specInfo.specType,
+      options: generatorOptions,
       onProgress: (message) => {
         onProgress?.(message);
         addProjectTaskLog(taskId, projectId, message).catch(console.error);
@@ -163,7 +124,7 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
       // Collect generated files info
       const outputFiles = collectGeneratedFiles(taskOutputDir);
       const outputSize = outputFiles.reduce((sum, f) => sum + f.size, 0);
-      
+
       // Create manifest
       const manifest = {
         taskId,
@@ -173,42 +134,53 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
         specVersion: specInfo.specVersion,
         wasConverted: specInfo.wasConverted,
         generatedAt: new Date().toISOString(),
+        generatorOptions,
         files: outputFiles.map(f => ({ name: f.name, size: f.size })),
       };
-      
-      // Write manifest
-      const fs = await import('fs');
-      fs.writeFileSync(
+
+      writeFileSync(
         join(taskOutputDir, 'manifest.json'),
         JSON.stringify(manifest, null, 2)
       );
+
+      // Add manifest to output files
       outputFiles.push({
         name: 'manifest.json',
         path: join(taskOutputDir, 'manifest.json'),
         size: statSync(join(taskOutputDir, 'manifest.json')).size,
       });
-      
+
       // Generate public token
       const publicToken = randomUUID();
-      
+
       // Update project with detected spec info if auto-detect was used
       if (project.specType === SpecType.AUTO_DETECT) {
-        await updateProject({
+        logger.info({ projectId, taskId, specType: specInfo.specType, specVersion: specInfo.specVersion }, 'Updating project with detected spec info');
+        
+        const updateResult = await updateProject({
           id: projectId,
           specType: specInfo.specType,
-        }).catch(console.error);
+        });
         
+        if (!updateResult.success) {
+          logger.error({ projectId, taskId, error: updateResult.error }, 'Failed to update project spec type');
+        } else {
+          logger.info({ projectId, taskId }, 'Project spec type updated successfully');
+        }
+
         // Update spec version in database directly
         const db = getDb();
         await db.update(projects)
-          .set({ 
+          .set({
             specVersion: specInfo.specVersion,
             wasConvertedFromSwagger2: specInfo.wasConverted,
           })
           .where(eq(projects.id, projectId))
-          .catch(console.error);
+          .catch((e) => logger.error({ projectId, taskId, error: String(e) }, 'Failed to update project spec version'));
+        
+        logger.info({ projectId, taskId, specVersion: specInfo.specVersion, wasConverted: specInfo.wasConverted }, 'Project spec version updated');
       }
-      
+
       // Update task with output info
       const db = getDb();
       await db.update(tasks)
@@ -220,7 +192,7 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
         })
         .where(eq(tasks.id, taskId))
         .catch(console.error);
-      
+
       await completeProjectTask(taskId, projectId, result.logs);
       onComplete?.(taskOutputDir);
       return { success: true, outputPath: taskOutputDir, outputFiles, outputSize };
@@ -229,40 +201,58 @@ export async function generateTypes(options: GeneratorOptions): Promise<{
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+
     logger.error({ projectId, taskId, error: errorMessage, stack: error instanceof Error ? error.stack : undefined }, 'Type generation failed');
-    
+
     await failProjectTask(taskId, projectId, errorMessage);
     onError?.(error instanceof Error ? error : new Error(errorMessage));
-    
+
     return { success: false, error: errorMessage };
   }
 }
 
-/**
- * Run swagger-typescript-api CLI
- */
+// ============================================
+// Generator Options Parsing
+// ============================================
+
+export function parseGeneratorOptions(optionsJson: string | null): GeneratorOptions {
+  if (!optionsJson) {
+    return DEFAULT_GENERATOR_OPTIONS;
+  }
+
+  try {
+    const parsed = JSON.parse(optionsJson);
+    return { ...DEFAULT_GENERATOR_OPTIONS, ...parsed };
+  } catch {
+    logger.warn('Failed to parse generator options, using defaults');
+    return DEFAULT_GENERATOR_OPTIONS;
+  }
+}
+
+// ============================================
+// Spec Version Detection
+// ============================================
+
 /**
  * Detect OpenAPI spec version from URL
- * Fetches the spec and checks for 'openapi' vs 'swagger' field
  */
 async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
   logger.info({ specUrl }, 'Detecting spec version');
-  
+
   try {
-    const response = await fetch(specUrl, { 
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+    const response = await fetch(specUrl, {
+      signal: AbortSignal.timeout(10000)
     });
-    
+
     if (!response.ok) {
       logger.error({ specUrl, status: response.status }, 'Failed to fetch spec');
       throw new Error(`Failed to fetch spec: ${response.status}`);
     }
-    
+
     logger.debug({ specUrl, size: response.headers.get('content-length') }, 'Spec fetched successfully');
-    
+
     const spec = await response.json();
-    
+
     // Check for 'openapi' field (OpenAPI 3.x)
     if (spec.openapi) {
       const version = spec.openapi.toString();
@@ -273,7 +263,7 @@ async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
         wasConverted: false,
       };
     }
-    
+
     // Check for 'swagger' field (Swagger 2.0)
     if (spec.swagger === '2.0') {
       logger.info({ specUrl }, 'Detected Swagger 2.0 spec (will convert)');
@@ -283,7 +273,7 @@ async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
         wasConverted: true,
       };
     }
-    
+
     // Fallback: assume OpenAPI 3.0
     return {
       specType: SpecType.OPENAPI_3X,
@@ -292,7 +282,6 @@ async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
     };
   } catch (error) {
     console.error('Spec detection failed:', error);
-    // Default to auto-detect mode, will be handled by swagger-typescript-api
     return {
       specType: SpecType.AUTO_DETECT,
       specVersion: 'unknown',
@@ -301,202 +290,188 @@ async function detectSpecVersion(specUrl: string): Promise<SpecInfo> {
   }
 }
 
-/**
- * Run swagger-typescript-api CLI
- */
-async function runSwaggerGenerator(options: {
+// ============================================
+// swagger-typescript-api Integration
+// ============================================
+
+interface SwaggerApiOptions {
   specUrl: string;
-  outputFile: string;
-  apiVersion?: string;
+  outputDir: string;
   baseUrl?: string;
-  specType?: typeof SpecType[keyof typeof SpecType];
+  options: GeneratorOptions;
   onProgress?: (message: string) => void;
-}): Promise<{
+}
+
+async function runSwaggerTypescriptApi(options: SwaggerApiOptions): Promise<{
   success: boolean;
   logs?: string;
   error?: string;
-  specInfo?: SpecInfo;
 }> {
-  logger.info({ 
-    specUrl: options.specUrl, 
-    outputFile: options.outputFile 
-  }, 'Running swagger-typescript-api');
+  const { specUrl, outputDir, baseUrl, options: genOptions, onProgress } = options;
+
+  logger.info({ specUrl, outputDir }, 'Running swagger-typescript-api');
 
   return new Promise((resolve) => {
     const logs: string[] = [];
 
-    // Build command arguments
-    const args = [
-      'npx',
-      'swagger-typescript-api',
-      '-p', options.specUrl,
-      '-o', options.outputFile,
-    ];
+    // Build command arguments for swagger-typescript-api
+    const args: string[] = ['generate'];
 
-    if (options.apiVersion) {
-      args.push('--api-version', options.apiVersion);
+    // Input spec
+    args.push('-p', specUrl);
+
+    // Output directory
+    args.push('-o', outputDir);
+
+    // Base URL for API
+    if (baseUrl) {
+      args.push('--base-url', baseUrl);
     }
 
-    if (options.baseUrl) {
-      args.push('--base-url', options.baseUrl);
+    // Modular output - separated files
+    if (genOptions.modular) {
+      args.push('--modular');
     }
 
-    logger.debug({ args }, 'Command args');
+    // Types only - no client
+    if (genOptions.typesOnly) {
+      args.push('--no-client');
+    }
 
-    // For demo purposes, simulate the process
-    // In production, uncomment the actual spawn
-    /*
-    const proc = spawn('npx', args.slice(1), {
+    // Route types
+    if (genOptions.routeTypes) {
+      args.push('--route-types');
+    }
+
+    // Extract enums
+    if (genOptions.extractEnums) {
+      args.push('--extract-enums');
+    }
+
+    // Extract responses
+    if (genOptions.extractResponses) {
+      args.push('--extract-responses');
+    }
+
+    // Extract request body
+    if (genOptions.extractRequestBody) {
+      args.push('--extract-request-body');
+    }
+
+    // Extract request params
+    if (genOptions.extractRequestParams) {
+      args.push('--extract-request-params');
+    }
+
+    // Extract response error
+    if (genOptions.extractResponseError) {
+      args.push('--extract-response-error');
+    }
+
+    // Readonly properties
+    if (genOptions.readonly) {
+      args.push('--add-readonly');
+    }
+
+    // Union enums
+    if (genOptions.unionEnums) {
+      args.push('--generate-union-enums');
+    }
+
+    // Sort types
+    if (genOptions.sortTypes) {
+      args.push('--sort-types');
+    }
+
+    // Sort routes
+    if (genOptions.sortRoutes) {
+      args.push('--sort-routes');
+    }
+
+    logger.debug({ args }, 'swagger-typescript-api arguments');
+
+    // Use the CLI directly from node_modules to avoid npx picking up wrong package
+    const cliPath = join(process.cwd(), 'node_modules', 'swagger-typescript-api', 'dist', 'cli.mjs');
+
+    // Spawn the process - use node with the CLI directly
+    const proc = spawn('node', [cliPath, ...args], {
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: process.cwd(),
     });
 
     proc.stdout?.on('data', (data) => {
       const message = data.toString().trim();
-      logs.push(message);
-      options.onProgress?.(message);
+      if (message) {
+        logs.push(message);
+        onProgress?.(message);
+      }
     });
 
     proc.stderr?.on('data', (data) => {
       const message = data.toString().trim();
-      logs.push(`[ERROR] ${message}`);
-      options.onProgress?.(`[ERROR] ${message}`);
+      if (message) {
+        logs.push(`[stderr] ${message}`);
+        onProgress?.(message);
+      }
     });
 
     proc.on('close', (code) => {
       if (code === 0) {
+        logger.info('swagger-typescript-api completed successfully');
         resolve({ success: true, logs: logs.join('\n') });
       } else {
-        resolve({ success: false, error: logs.join('\n'), logs: logs.join('\n') });
+        const errorMsg = logs.join('\n') || `Process exited with code ${code}`;
+        logger.error({ code, logs }, 'swagger-typescript-api failed');
+        resolve({ success: false, error: errorMsg, logs: logs.join('\n') });
       }
     });
-    */
 
-    // Simulate for demo
-    const simulateProgress = async () => {
-      logger.info('Simulating type generation');
-      
-      const steps = [
-        'Fetching OpenAPI specification...',
-        'Parsing JSON schema...',
-        'Extracting endpoints...',
-        'Generating TypeScript types...',
-        'Creating API client...',
-        'Writing output files...',
-        'Type generation complete!',
-      ];
-
-      for (const step of steps) {
-        await new Promise((r) => setTimeout(r, 500));
-        logs.push(step);
-        options.onProgress?.(step);
-      }
-
-      // Create output files in the task directory
-      const fs = await import('fs');
-      const outputDir = join(options.outputFile, '..');
-      
-      // Create data-contracts.ts
-      const dataContracts = `/**
- * Data Contracts
- * Type definitions for API requests and responses
- */
-
-// Add your generated types here
-export interface ApiResponse<T = unknown> {
-  data: T;
-  status: number;
-  message?: string;
-}
-
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-}
-`;
-      fs.writeFileSync(join(outputDir, 'data-contracts.ts'), dataContracts);
-      
-      // Create http-client.ts
-      const httpClient = `/**
- * HTTP Client
- * Base HTTP configuration for API calls
- */
-
-export interface HttpClientOptions {
-  baseUrl: string;
-  headers?: Record<string, string>;
-}
-
-export class HttpClient {
-  constructor(private options: HttpClientOptions) {}
-  
-  async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(\`\${this.options.baseUrl}\${path}\`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.options.headers,
-        ...init?.headers,
-      },
+    proc.on('error', (err) => {
+      logger.error({ error: err.message }, 'Failed to spawn swagger-typescript-api');
+      resolve({ success: false, error: err.message });
     });
-    return response.json();
-  }
-}
-`;
-      fs.writeFileSync(join(outputDir, 'http-client.ts'), httpClient);
-      
-      // Create route-types.ts
-      const routeTypes = `/**
- * Route Types
- * Type definitions for API endpoints
- */
-
-export interface RouteDefinition {
-  path: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-}
-`;
-      fs.writeFileSync(join(outputDir, 'route-types.ts'), routeTypes);
-      
-      // Create api.ts (main file)
-      const apiContent = `/**
- * Generated API Client
- * Source: ${options.specUrl}
- * Generated: ${new Date().toISOString()}
- */
-
-import { HttpClient } from './http-client';
-import type * as Contracts from './data-contracts';
-
-export { Contracts };
-
-export interface ApiClientOptions {
-  baseUrl: string;
-  token?: string;
-}
-
-export class ApiClient extends HttpClient {
-  constructor(options: ApiClientOptions) {
-    super({
-      baseUrl: options.baseUrl,
-      headers: options.token ? { Authorization: \`Bearer \${options.token}\` } : {},
-    });
-  }
-}
-`;
-      fs.writeFileSync(options.outputFile, apiContent);
-
-      resolve({ success: true, logs: logs.join('\n') });
-    };
-
-    simulateProgress();
   });
 }
 
+// ============================================
+// File Collection
+// ============================================
+
 /**
- * Queue for background processing
+ * Recursively collect all generated files in a directory
  */
+function collectGeneratedFiles(dir: string): GeneratedFile[] {
+  const files: GeneratedFile[] = [];
+
+  if (!existsSync(dir)) return files;
+
+  const entries = readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectGeneratedFiles(fullPath));
+    } else if (entry.isFile()) {
+      const stats = statSync(fullPath);
+      // Skip manifest during collection (added separately)
+      if (entry.name !== 'manifest.json' && entry.name.endsWith('.ts')) {
+        files.push({
+          name: entry.name,
+          path: fullPath,
+          size: stats.size,
+        });
+      }
+    }
+  }
+
+  return files;
+}
+
+// ============================================
+// Generator Queue (for background processing)
+// ============================================
+
 class GeneratorQueue {
   private queue: Array<{
     projectId: number;

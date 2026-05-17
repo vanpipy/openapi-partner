@@ -34,12 +34,27 @@ interface LogEntry {
 }
 
 function formatLog(level: string, message: string, context?: object): string {
+  // Handle Error objects specially - their properties aren't enumerable
   const entry: LogEntry = {
     time: new Date().toISOString(),
     level: level.toUpperCase(),
     message,
-    ...context,
   };
+  
+  if (context) {
+    for (const [key, value] of Object.entries(context)) {
+      if (value instanceof Error) {
+        entry[key] = {
+          name: value.name,
+          message: value.message,
+          stack: value.stack,
+        };
+      } else {
+        entry[key] = value;
+      }
+    }
+  }
+  
   return JSON.stringify(entry);
 }
 
