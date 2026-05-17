@@ -115,13 +115,13 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
           // Set the new task ID for SSE connection
           setCurrentTaskId(result.taskId);
           // Refresh tasks immediately
-          await refreshTasks();
+          await refreshTasksRef.current();
           // Set active tasks to true to start polling
           setHasActiveTasks(true);
           // Ensure polling is running
           if (!pollIntervalRef.current) {
             pollIntervalRef.current = setInterval(() => {
-              refreshTasks();
+              refreshTasksRef.current();
             }, 3000);
           }
         }
@@ -156,7 +156,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
       // Start or stop polling based on active tasks
       if (active && !pollIntervalRef.current) {
         pollIntervalRef.current = setInterval(() => {
-          refreshTasks();
+          refreshTasksRef.current();
         }, 3000);
       } else if (!active && pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -166,18 +166,24 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
       console.error('Failed to fetch tasks:', error);
       setIsLoading(false);
     }
-  }, [projectId, selectedTask?.id]);
+  }, [projectId]);
 
+  // Ref to hold refreshTasks to avoid SSE reconnection loops
+  const refreshTasksRef = useRef(refreshTasks);
   useEffect(() => {
-    // Initial fetch
-    refreshTasks();
+    refreshTasksRef.current = refreshTasks;
+  });
+
+  // Initial fetch on mount
+  useEffect(() => {
+    refreshTasksRef.current();
 
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [refreshTasks]);
+  }, []);
 
   // SSE connection for specific task
   useEffect(() => {
@@ -199,7 +205,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
           const data = JSON.parse(event.data);
           // Refresh tasks on any task event
           if (['init', 'started', 'progress', 'completed', 'failed'].includes(data.type)) {
-            refreshTasks();
+            refreshTasksRef.current();
           }
         } catch (e) {
           console.error('Failed to parse SSE message:', e);
@@ -224,7 +230,7 @@ export function TaskProgress({ projectId, taskId }: TaskProgressProps) {
         clearTimeout(reconnectTimeout);
       }
     };
-  }, [currentTaskId, refreshTasks]);
+  }, [currentTaskId]);
 
   const formatDate = (date: Date | null) => {
     if (!date) return '-';
